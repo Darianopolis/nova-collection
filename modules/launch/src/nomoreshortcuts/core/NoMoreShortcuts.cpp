@@ -545,6 +545,7 @@ void App::OnEvent(const overlay::Event &e)
                             }
 
                             std::cout << "Indexing complete. Close this window and refresh the index with F5 in app.\n";
+                            std::cout.flush();
                             FreeConsole();
 
                             indexing = false;

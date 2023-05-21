@@ -1,72 +1,105 @@
+#include <nova/rhi/nova_RHI.hpp>
+#include <nova/core/nova_Timer.hpp>
+
 #include <GLFW/glfw3.h>
-#include <glad/glad.h>
+#include <GLFW/glfw3native.h>
 
 #include <array>
 #include <iostream>
 
+using namespace nova::types;
+
 int main()
 {
     glfwInit();
-    glfwWindowHint(GLFW_VERSION_MAJOR, 3);
-    glfwWindowHint(GLFW_VERSION_MINOR, 3);
+    glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
     glfwWindowHint(GLFW_TRANSPARENT_FRAMEBUFFER, GLFW_TRUE);
     glfwWindowHint(GLFW_DECORATED, GLFW_FALSE);
     auto window = glfwCreateWindow(1920, 1200, "next", nullptr, nullptr);
-    glfwMakeContextCurrent(window);
-    gladLoadGLLoader((GLADloadproc)glfwGetProcAddress);
+
+    auto context = nova::Context::Create(true);
+
+    auto surface = context->CreateSurface(glfwGetWin32Window(window));
+    auto swapchain = context->CreateSwapchain(surface,
+        nova::ImageUsage::TransferDst
+        | nova::ImageUsage::ColorAttach,
+        nova::PresentMode::Fifo);
+
+    auto queue = context->graphics;
+    auto commandPool = context->CreateCommands();
+    auto fence = context->CreateFence();
+    auto tracker = context->CreateResourceTracker();
 
 // -----------------------------------------------------------------------------
 
-    GLuint vs = glCreateShader(GL_VERTEX_SHADER);
-    const char* vertexSource = R"(
-        #version 330 core
+    struct PushConstants
+    {
+        alignas(8) glm::vec2 pos;
+        alignas(8) glm::vec2 size;
+        alignas(16) glm::vec4 color;
+    };
 
-        const vec2[6] deltas = vec2[] (
-            vec2(-1, -1),
-            vec2(-1,  1),
-            vec2( 1,  -1),
+    VkPushConstantRange range {
+        .stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
+        .size = sizeof(PushConstants),
+    };
 
-            vec2(-1,  1),
-            vec2( 1,  1),
-            vec2( 1, -1)
-        );
+    VkPipelineLayout layout;
+    nova::VkCall(vkCreatePipelineLayout(context->device, nova::Temp(VkPipelineLayoutCreateInfo {
+        .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
+        .pushConstantRangeCount = 1,
+        .pPushConstantRanges = &range,
+    }), context->pAlloc, &layout));
 
-        uniform vec2 uPos;
-        uniform vec2 uSize;
+    auto vs = context->CreateShader(
+        nova::ShaderStage::Vertex, {},
+        "vertex",
+        R"(
+#version 460
 
-        void main()
-        {
-            gl_Position = vec4(uPos + deltas[gl_VertexID] * uSize, 0, 1);
-        }
-    )";
-    glShaderSource(vs, 1, &vertexSource, nullptr);
-    glCompileShader(vs);
+layout(push_constant) uniform PushConstants {
+    vec2 pos;
+    vec2 size;
+    vec4 color;
+} pc;
 
-    GLuint fs = glCreateShader(GL_FRAGMENT_SHADER);
-    const char* fragmentSource = R"(
-        #version 330 core
+const vec2[6] deltas = vec2[] (
+    vec2(-1, -1),
+    vec2(-1,  1),
+    vec2( 1, -1),
 
-        uniform vec4 uColor;
+    vec2(-1,  1),
+    vec2( 1,  1),
+    vec2( 1, -1)
+);
 
-        out vec4 outColor;
+void main()
+{
+    gl_Position = vec4(pc.pos + deltas[gl_VertexIndex] * pc.size, 0, 1);
+}
+        )",
+        {range});
 
-        void main()
-        {
-            outColor = uColor;
-        }
-    )";
-    glShaderSource(fs, 1, &fragmentSource, nullptr);
-    glCompileShader(fs);
+    auto fs = context->CreateShader(
+        nova::ShaderStage::Fragment, {},
+        "fragment",
+        R"(
+#version 460
 
-    GLuint sp = glCreateProgram();
-    glAttachShader(sp, vs);
-    glAttachShader(sp, fs);
-    glLinkProgram(sp);
-    glUseProgram(sp);
+layout(push_constant) uniform PushConstants {
+    vec2 pos;
+    vec2 size;
+    vec4 color;
+} pc;
 
-    GLint posLoc = glGetUniformLocation(sp, "uPos");
-    GLint sizeLoc = glGetUniformLocation(sp, "uSize");
-    GLint colorLoc = glGetUniformLocation(sp, "uColor");
+layout(location = 0) out vec4 outColor;
+
+void main()
+{
+    outColor = pc.color;
+}
+        )",
+        {range});
 
 // -----------------------------------------------------------------------------
 
@@ -79,6 +112,7 @@ int main()
 
     struct Box {
         float x, y, w, h;
+        Vec4 color;
     };
 
     Box box1 {
@@ -86,13 +120,23 @@ int main()
         .y = mHeight * 0.25f,
         .w = 100.f,
         .h = 100.f,
+        .color = Vec4(1.f, 0.f, 0.f, 1.f),
     };
 
     Box box2 {
+        .x = mWidth * 0.5f,
+        .y = mHeight * 0.5f,
+        .w = 100.f,
+        .h = 100.f,
+        .color = Vec4(0.f, 1.f, 0.f, 1.f),
+    };
+
+    Box box3 {
         .x = mWidth * 0.75f,
         .y = mHeight * 0.75f,
         .w = 100.f,
         .h = 100.f,
+        .color = Vec4(0.f, 0.f, 1.f, 1.f),
     };
 
     struct Rect {
@@ -101,36 +145,37 @@ int main()
 
     auto expandBounds = [](Rect& bounds, const Box& box)
     {
-        // std::cout << "Box, pos = " << box.x << ", " << box.y << ", size = " << box.w << ", " << box.h << '\n';
-        // std::cout << "Box, left = " << box.x - box.w << ", right = " << box.x + box.w
-        //     << ", top = " << box.y - box.h << ", bottom = " << box.y + box.h << '\n';
         bounds.left = std::min(bounds.left, box.x - box.w);
         bounds.right = std::max(bounds.right, box.x + box.w);
         bounds.top = std::min(bounds.top, box.y - box.h);
         bounds.bottom = std::max(bounds.bottom, box.y + box.h);
     };
 
-    auto drawBox = [&](const Rect& bounds, const Box& box) {
+    auto drawBox = [&](nova::CommandList* cmd, const Rect& bounds, const Box& box) {
         float width = bounds.right - bounds.left;
         float height = bounds.bottom - bounds.top;
 
         Box out;
         out.x = (2.f * (box.x - bounds.left) / width) - 1.f;
-        out.y = 1.f - (2.f * (box.y - bounds.top) / height);
+        out.y = (2.f * (box.y - bounds.top) / height) - 1.f;
         out.w = 2.f * box.w / width;
         out.h = 2.f * box.w / height;
 
-        // static int count = 0;
-        // if (count < 1 && ++count)
-        //     std::cout << "Out, pos = " << out.x << ", " << out.y << ", size = " << out.w << ", " << out.h << '\n';
+        cmd->PushConstants(layout,
+            nova::ShaderStage::Vertex | nova::ShaderStage::Fragment,
+            range.offset, range.size,
+            nova::Temp(PushConstants {
+                .pos = { out.x, out.y },
+                .size = { out.w, out.h },
+                .color = box.color,
+            }));
 
-        glUniform2f(posLoc, out.x, out.y);
-        glUniform2f(sizeLoc, out.w, out.h);
-        glUniform4f(colorLoc, 1.f, 1.f, 1.f, 1.f);
-        glDrawArrays(GL_TRIANGLES, 0, 6);
+        cmd->Draw(6, 1, 0, 0);
     };
 
+    bool redraw = true;
 
+    auto lastFrame = std::chrono::steady_clock::now();
     while (!glfwWindowShouldClose(window))
     {
         glfwPollEvents();
@@ -138,58 +183,66 @@ int main()
 // -----------------------------------------------------------------------------
 
         auto moveBox = [&](Box& box, int left, int right, int up, int down) {
-            if (glfwGetKey(window, left))
-                box.x -= 10;
+            float speed = 100.f;
+            if (glfwGetKey(window, left))  box.x -= speed;
+            if (glfwGetKey(window, right)) box.x += speed;
+            if (glfwGetKey(window, up))    box.y -= speed;
+            if (glfwGetKey(window, down))  box.y += speed;
 
-            if (glfwGetKey(window, right))
-                box.x += 10;
-
-            if (glfwGetKey(window, up))
-                box.y -= 10;
-
-            if (glfwGetKey(window, down))
-                box.y += 10;
+            redraw |= !!glfwGetKey(window, left) || !!glfwGetKey(window, right) || !!glfwGetKey(window, up) || !!glfwGetKey(window, down);
         };
 
         moveBox(box1, GLFW_KEY_A, GLFW_KEY_D, GLFW_KEY_W, GLFW_KEY_S);
-        moveBox(box2, GLFW_KEY_LEFT, GLFW_KEY_RIGHT, GLFW_KEY_UP, GLFW_KEY_DOWN);
+        moveBox(box2, GLFW_KEY_J, GLFW_KEY_L, GLFW_KEY_I, GLFW_KEY_K);
+        moveBox(box3, GLFW_KEY_LEFT, GLFW_KEY_RIGHT, GLFW_KEY_UP, GLFW_KEY_DOWN);
+
+        if (!redraw)
+            glfwWaitEvents();
+        redraw = false;
 
 // -----------------------------------------------------------------------------
 
         Rect bounds;
         expandBounds(bounds, box1);
         expandBounds(bounds, box2);
-
-        // std::cout << "Bounds = left = " << bounds.left << ", right = " << bounds.right
-        //     << ", top = " << bounds.top << ", bottom = " << bounds.bottom << '\n';
+        expandBounds(bounds, box3);
 
 // -----------------------------------------------------------------------------
 
-        // int w, h;
-        // glfwGetFramebufferSize(window, &w, &h);
-        // glViewport(0, 0, w, h);
+        // Record frame
 
-        int w = bounds.right - bounds.left;
-        int h = bounds.bottom - bounds.top;
-        glfwSetWindowSize(window, w, h);
-        glfwSetWindowPos(window, bounds.left, bounds.top);
-        glViewport(0, 0, w, h);
+        fence->Wait();
+        commandPool->Reset();
 
-        glClearColor(1.f, 0.f, 0.f, 0.5f);
-        glClear(GL_COLOR_BUFFER_BIT);
+        auto cmd2 = commandPool->BeginSecondary(tracker, nova::RenderingDescription {
+            .colorFormats = { nova::Format(swapchain->format.format) },
+        });
+        drawBox(cmd2, bounds, box1);
+        drawBox(cmd2, bounds, box2);
+        drawBox(cmd2, bounds, box3);
+        cmd2->End();
 
-        drawBox(bounds, box1);
-        drawBox(bounds, box2);
+        auto cmd = commandPool->BeginPrimary(tracker);
+        cmd->SetViewport({ bounds.right - bounds.left, bounds.bottom - bounds.top }, false);
+        cmd->SetBlendState(1, false);
+        cmd->SetTopology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP);
+        cmd->BindShaders({vs, fs});
 
-        // glUniform2f(posLoc, 0.f, 0.f);
-        // glUniform2f(sizeLoc, 0.25f, 0.25f);
-        // glUniform4f(colorLoc, 0.f, 1.f, 0.f, 1.f);
-        // glDrawArrays(GL_TRIANGLES, 0, 6);
+        // Update window size, record primary buffer and present
 
-        glfwSwapBuffers(window);
+        glfwSetWindowSize(window, i32(bounds.right - bounds.left), i32(bounds.bottom - bounds.top));
+        glfwSetWindowPos(window, i32(bounds.left), i32(bounds.top));
 
-        if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS)
-            glfwWindowShouldClose(window);
+        queue->Acquire({swapchain}, {fence});
+
+        cmd->BeginRendering({swapchain->image}, {Vec4(0.2f, 0.2f, 0.2f, 0.5f)}, true);
+        cmd->ExecuteCommands({cmd2});
+        cmd->EndRendering();
+
+        cmd->Transition(swapchain->image, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
+
+        queue->Submit({cmd}, {fence}, {fence});
+        queue->Present({swapchain}, {fence});
     }
 
     glfwDestroyWindow(window);

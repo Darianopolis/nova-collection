@@ -84,7 +84,7 @@ public:
 
         template<class Node>
         void operator()(Node& n) {
-            if (n.check_hit(*overlay::GetMousePos(event)))
+            if (n.CheckHit(*overlay::GetMousePos(event)))
             {
                 app.beingDragged = &n;
                 overlay::Focus(*app.layer);

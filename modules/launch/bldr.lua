@@ -5,6 +5,7 @@ if Project "nms-v2" then
         "src/overlay/*", -- Don't compile examples
         "src/overlay/directx/*",
         "src/nomoreshortcuts/**",
+        -- "src/overlay/example/BoxDemo.cpp"
     }
     Include {
         "src/common",
@@ -15,16 +16,17 @@ if Project "nms-v2" then
     }
     Import {
         "sqlite3",
+        "nova",
     }
 
     Artifact { "out/NoMoreShortcuts", type = "Window" }
+    -- Artifact { "out/main", type = "Console" }
 end
 
 if Project "nms-v2-box" then
     Compile "src/boxtest/**"
     Import {
-        "glfw",
-        "glad",
+        "nova",
     }
     Artifact { "out/main", type = "Console" }
 end
