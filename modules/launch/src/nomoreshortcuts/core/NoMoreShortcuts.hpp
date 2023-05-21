@@ -1,15 +1,10 @@
 #pragma once
-#ifndef NO_MORE_SHORTCUTS_HPP
-#define NO_MORE_SHORTCUTS_HPP
 
-#include "Overlay.hpp"
-#include "UnicodeCollator.hpp"
 #include "Query.hpp"
 #include "Index.hpp"
 
-// #define MAGIC_ENUM_RANGE_MIN 0
-// #define MAGIC_ENUM_RANGE_MAX 512
-// #include "magic_enum.hpp"
+#include <Overlay.hpp>
+#include <UnicodeCollator.hpp>
 
 #include <filesystem>
 #include <vector>
@@ -17,18 +12,16 @@
 #include <chrono>
 #include <format>
 
-namespace ui = overlay_ui;
-
 class App;
 
-class LaunchItem : public ui::NodeImpl<LaunchItem>
+class LaunchItem : public overlay::NodeImpl<LaunchItem>
 {
 public:
-    ui::Text nameText;
-    ui::Text pathText;
-    ui::Box box;
-    ui::Icon icon;
-    ui::Stage* stage;
+    overlay::Text nameText;
+    overlay::Text pathText;
+    overlay::Box box;
+    overlay::Icon icon;
+    overlay::Stage* stage;
 
     std::unique_ptr<ResultItem> view;
 
@@ -46,13 +39,13 @@ public:
     }
 };
 
-class ContextMenu : public ui::NodeImpl<ContextMenu>
+class ContextMenu : public overlay::NodeImpl<ContextMenu>
 {
 public:
-    ui::Box box;
-    ui::Box highlight;
-    ui::Text closeText;
-    ui::Stage *stage;
+    overlay::Box box;
+    overlay::Box highlight;
+    overlay::Text closeText;
+    overlay::Stage *stage;
 
     ContextMenu(App& app);
 
@@ -68,31 +61,31 @@ public:
     }
 };
 
-class App : public ui::NodeImpl<App>
+class App : public overlay::NodeImpl<App>
 {
 public:
 
-    ui::Font nameFont{"Sans Serif", 35};
-    ui::Font pathFont{"Sans Serif", 18};
-    ui::Font menuFont{"Sans Serif", 24};
+    overlay::Font nameFont{"Sans Serif", 35};
+    overlay::Font pathFont{"Sans Serif", 18};
+    overlay::Font menuFont{"Sans Serif", 24};
 
     float queryWidth = 1920;
     float itemWidth = 1200;
     float corner = 15;
 
-    ui::Color HighlightColour{0.4, 0.2};
-    ui::Color TextColour{1};
-    ui::Color Transparent{0, 0};
-    ui::Color BorderColour{0.4, 0.5};
-    ui::Color BgColour{0.1};
+    overlay::Color HighlightColour{0.4, 0.2};
+    overlay::Color TextColour{1};
+    overlay::Color Transparent{0, 0};
+    overlay::Color BorderColour{0.4, 0.5};
+    overlay::Color BgColour{0.1};
 
-    ui::Stage *stage;
+    overlay::Stage *stage;
 
-    ui::Box queryBox;
+    overlay::Box queryBox;
 
     std::vector<std::string> keywords;
-    ui::Text queryText;
-    ui::Box resultsBox;
+    overlay::Text queryText;
+    overlay::Box resultsBox;
 
     std::vector<std::unique_ptr<LaunchItem>> items;
     uint32_t selection;
@@ -105,13 +98,13 @@ public:
 
     bool show;
 
-    ui::Layer *mainLayer;
-    ui::Layer *menuLayer;
+    overlay::Layer *mainLayer;
+    overlay::Layer *menuLayer;
 
     int updates = 0;
     std::chrono::time_point<std::chrono::steady_clock> last_update;
 
-    App(ui::Stage *stage);
+    App(overlay::Stage *stage);
 
     void resetItems(bool end = false);
 
@@ -131,23 +124,17 @@ public:
         visit(menu);
     }
 
-    void resetQuery();
-
     void update();
 
+    void resetQuery();
     std::string join_query();
-
     void updateQuery();
 
     void move(int delta);
-
     bool moveSelectedUp();
-
     bool moveSelectedDown();
 
-    void onEvent(const ui::Event &e);
+    void onEvent(const overlay::Event &e);
 };
 
 int AppMain();
-
-#endif // !NO_MORE_SHORTCUTS_HPP

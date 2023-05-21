@@ -1,6 +1,6 @@
 #include "Overlay.hpp"
 
-namespace overlay_ui
+namespace overlay
 {
     // ---------------------------------- //
     // ------------- Events ------------- //
@@ -54,7 +54,7 @@ namespace overlay_ui
 
     bool mouseover(const Event& event, Node& node)
     {
-        auto pos = overlay_ui::mouse_pos(event);
+        auto pos = overlay::mouse_pos(event);
         return pos && node.check_hit(*pos);
     }
 

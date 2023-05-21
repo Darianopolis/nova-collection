@@ -1,12 +1,7 @@
-#include "fs_index.hpp"
+#include "FileIndexer.hpp"
 
 #include <unordered_map>
 #include <ranges>
-
-// NodeView::NodeView(Node* node)
-//   : node(node)
-//   , name(node->name)
-//   , len(node->len) { }
 
 NodeIterator::NodeIterator(Node* initial, size_t index)
     : nodes{NodeIteratorRef(initial, index)}

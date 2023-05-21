@@ -1,13 +1,11 @@
 #pragma once
-#ifndef OVERLAY_WIN_H
-#define OVERLAY_WIN_H
 
 #ifndef OVERLAY_H
 #include "Overlay.hpp"
 #endif
 #include "OverlayDirectXLayout.hpp"
 
-#include <WinAPIWrapper.h>
+#include "Win32Include.hpp"
 
 #include <functional>
 #include <thread>
@@ -15,8 +13,13 @@
 #include <queue>
 #include <unordered_map>
 
-namespace overlay_ui
+namespace overlay
 {
+    void ConvertToWString(std::string_view input, std::wstring& output);
+    std::wstring ConvertToWString(std::string_view input);
+
+    void ConvertToString(std::wstring_view input, std::string& output);
+    std::string ConvertToString(std::wstring_view input);
 
     // --------------------------------------- //
     // ------------- Icon Loader ------------- //
@@ -49,13 +52,13 @@ namespace overlay_ui
         // std::unordered_map<std::string, CachedIcon> icons;
         std::unordered_map<std::string, std::shared_ptr<IconFuture>> icons;
         size_t version;
-        win::d2d1::DCRenderTarget *render_target;
+        ID2D1DCRenderTarget *render_target;
         Stage *stage{nullptr};
         bool block_wait{true};
 
         std::thread worker();
     public:
-        win::HWnd hWnd;
+        HWND hWnd;
 
         IconLoader();
         ~IconLoader();
@@ -71,7 +74,7 @@ namespace overlay_ui
     struct Layer
     {
         Stage *stage;
-        win::HWnd hWnd;
+        HWND hWnd;
         Rect bounds;
 
         void hide();
@@ -85,18 +88,18 @@ namespace overlay_ui
     struct Frame
     {
         size_t version;
-        win::d2d1::DCRenderTarget* render_target;
-        win::gdi::HDeviceContext hdc;
+        ID2D1DCRenderTarget* render_target;
+        HDC hdc;
         Vec screen_pos;
         Layer *layer;
         Stage *stage;
 
         bool sticky;
         Rect bounds;
-        win::Rect rect;
-        win::gdi::HDeviceContext hdc_screen;
-        win::gdi::HBitmap bitmap;
-        win::gdi::HBitmap bitmap_old;
+        RECT rect;
+        HDC hdc_screen;
+        HBITMAP bitmap;
+        HBITMAP bitmap_old;
 
         bool drawing{false};
 
@@ -136,23 +139,23 @@ namespace overlay_ui
     class Stage
     {
     public:
-        win::ComPtr<win::d2d1::Factory> d2d1;
-        win::ComPtr<win::dwrite::Factory> dwrite;
-        win::ComPtr<win::wic::Factory> wic;
+        ComPtr<ID2D1Factory> d2d1;
+        ComPtr<IDWriteFactory> dwrite;
+        ComPtr<IWICImagingFactory> wic;
 
-        win::TrackMouseEvent mouse_track;
-        win::HInstance instance{nullptr};
+        TRACKMOUSEEVENT mouse_track;
+        HINSTANCE instance{nullptr};
         std::vector<std::unique_ptr<Layer>> layers;
         std::optional<Vec> mouse_pos;
 
         size_t render_target_version{0};
-        win::ComPtr<win::d2d1::DCRenderTarget> render_target;
-        win::ComPtr<win::d2d1::SolidColorBrush> brush;
+        ComPtr<ID2D1DCRenderTarget> render_target;
+        ComPtr<ID2D1SolidColorBrush> brush;
 
         Node screen;
 
-        win::Guid guid;
-        win::HIcon icon;
+        GUID guid;
+        HICON icon;
         IconLoader icon_loader;
 
         std::function<void(const Event&)> event_handler;
@@ -161,8 +164,8 @@ namespace overlay_ui
 
         bool debug{false};
 
-        static win::LResult __stdcall WndProc(win::HWnd hWnd, win::UInt msg, win::WParam wParam, win::LParam lParam);
-        win::LResult HandleMessage(win::HWnd hWnd, win::UInt msg, win::WParam wParam, win::LParam lParam);
+        static LRESULT __stdcall WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
+        LRESULT HandleMessage(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
         Stage();
         ~Stage();
@@ -174,7 +177,7 @@ namespace overlay_ui
 
         size_t getUID();
 
-        bool bindDC(win::gdi::HDeviceContext hdc, win::Rect &rc);
+        bool bindDC(HDC hdc, RECT &rc);
 
         Layer* layer(int id)
         {
@@ -192,5 +195,3 @@ namespace overlay_ui
 
     int Start(std::function<void(Event&)> callback);
 }
-
-#endif // !OVERLAY_WIN_H

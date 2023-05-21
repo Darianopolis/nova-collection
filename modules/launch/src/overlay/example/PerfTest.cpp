@@ -1,32 +1,30 @@
-#include "Overlay.hpp"
+#include <Overlay.hpp>
 
 #include <random>
 #include <chrono>
 
-namespace ui = overlay_ui;
-
 static auto dist = std::uniform_real_distribution<float>(0, 1);
 static auto engine = std::default_random_engine();
 
-struct App : ui::NodeImpl<App>
+struct App : overlay::NodeImpl<App>
 {
-    ui::Stage *stage;
-    ui::Layer *layer;
-    std::vector<std::unique_ptr<ui::Box>> boxes;
+    overlay::Stage *stage;
+    overlay::Layer *layer;
+    std::vector<std::unique_ptr<overlay::Box>> boxes;
 
-    // ui::Color bg = rc();
-    // ui::Color fg = rc();
+    // overlay::Color bg = rc();
+    // overlay::Color fg = rc();
 
-    static ui::Color rc()
+    static overlay::Color rc()
     {
-        return ui::Color{dist(engine), dist(engine), dist(engine), dist(engine)};
-        // return ui::Color{dist(engine), dist(engine), dist(engine), 1};
+        return overlay::Color{dist(engine), dist(engine), dist(engine), dist(engine)};
+        // return overlay::Color{dist(engine), dist(engine), dist(engine), 1};
     }
 
-    App(ui::Stage &stage)
+    App(overlay::Stage &stage)
         : stage(&stage)
     {
-        layer = ui::layer(stage, 0);
+        layer = overlay::layer(stage, 0);
 
         float num = 50;
         float width = 3840;
@@ -38,17 +36,17 @@ struct App : ui::NodeImpl<App>
         {
             for (float y = 0; y < height; y += dy)
             {
-                auto &box = boxes.emplace_back(new ui::Box{rc(), rc(), 0, 0});
-                // box->anchor.parent = ui::screen(stage);
-                // box->anchor.from = ui::Alignments::TopLeft;
-                // box->anchor.offset = ui::Vec{(float)x, (float)y};
-                // box->anchor.to = ui::Alignments::TopLeft;
-                box->anchor = ui::Anchor{
-                    ui::screen(stage),
-                    ui::Alignments::TopLeft,
-                    ui::Vec{(float)x, (float)y},
-                    ui::Alignments::TopLeft};
-                box->size = ui::Vec{dx, dy};
+                auto &box = boxes.emplace_back(new overlay::Box{rc(), rc(), 0, 0});
+                // box->anchor.parent = overlay::screen(stage);
+                // box->anchor.from = overlay::Alignments::TopLeft;
+                // box->anchor.offset = overlay::Vec{(float)x, (float)y};
+                // box->anchor.to = overlay::Alignments::TopLeft;
+                box->anchor = overlay::Anchor{
+                    overlay::screen(stage),
+                    overlay::Alignments::TopLeft,
+                    overlay::Vec{(float)x, (float)y},
+                    overlay::Alignments::TopLeft};
+                box->size = overlay::Vec{dx, dy};
             }
         }
     }
@@ -69,14 +67,14 @@ struct App : ui::NodeImpl<App>
     std::chrono::time_point<std::chrono::steady_clock> last_time;
     size_t updates = 0;
 
-    void onEvent(const ui::Event& e)
+    void onEvent(const overlay::Event& e)
     {
         // std::cout << "Event!\n";
         using namespace std::chrono;
 
         change();
-        // if (e.event == ui::EventID::Initialize)
-            ui::update(*layer, *this, false);
+        // if (e.event == overlay::EventID::Initialize)
+            overlay::update(*layer, *this, false);
 
         ++updates;
         if (duration_cast<milliseconds>(steady_clock::now() - last_time).count() > 1000)
@@ -90,9 +88,9 @@ struct App : ui::NodeImpl<App>
 
 int main()
 {
-    auto stage = ui::stage();
+    auto stage = overlay::stage();
     auto app = App(stage);
-    return ui::run(stage, [&](auto& e) { app.onEvent(e); });
+    return overlay::run(stage, [&](auto& e) { app.onEvent(e); });
     // using namespace std::chrono;
     // auto last_time = steady_clock::now();
     // auto updates = 0;
@@ -105,6 +103,6 @@ int main()
     //   }
 
     //   app.change();
-    //   ui::update(*app.layer, app, false);
+    //   overlay::update(*app.layer, app, false);
     // }
 }

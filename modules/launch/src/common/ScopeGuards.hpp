@@ -1,6 +1,4 @@
 #pragma once
-#ifndef SCOPE_GUARDS_H
-#define SCOPE_GUARDS_H
 
 template<typename Fn>
 class OnScopeExit
@@ -58,5 +56,3 @@ public:
 #define ON_SCOPE_EXIT(...)    OnScopeExit    COMMON_CONCAT(_scope_guard_$_, __COUNTER__) = [__VA_ARGS__]
 #define ON_SCOPE_SUCCESS(...) OnScopeSuccess COMMON_CONCAT(_scope_guard_$_, __COUNTER__) = [__VA_ARGS__]
 #define ON_SCOPE_FAILURE(...) OnScopeFailure COMMON_CONCAT(_scope_guard_$_, __COUNTER__) = [__VA_ARGS__]
-
-#endif // !SCOPE_GUARDS_H

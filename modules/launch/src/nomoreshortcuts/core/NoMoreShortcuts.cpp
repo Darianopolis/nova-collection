@@ -11,34 +11,34 @@
 using namespace std::literals;
 
 LaunchItem::LaunchItem(App& app, std::unique_ptr<ResultItem> view)
-    : nameText(&app.nameFont, "", app.TextColour, ui::Vec{app.itemWidth, 0})
-    , pathText(&app.pathFont, "", app.TextColour, ui::Vec{app.itemWidth, 0})
+    : nameText(&app.nameFont, "", app.TextColour, overlay::Vec{app.itemWidth, 0})
+    , pathText(&app.pathFont, "", app.TextColour, overlay::Vec{app.itemWidth, 0})
     , box(app.HighlightColour, app.Transparent, 0, app.corner)
     , icon()
     , stage(app.stage)
 {
 
-    using namespace ui::Alignments;
+    using namespace overlay::Alignments;
 
-    size = ui::Vec{app.itemWidth, 0};
+    size = overlay::Vec{app.itemWidth, 0};
     box.size = size;
     box.anchor.parent = this;
     box.visible = false;
 
-    icon.size = ui::Vec{40, 40};
-    icon.anchor = ui::Anchor{this, Left, ui::Vec{12, 0}, Left};
+    icon.size = overlay::Vec{40, 40};
+    icon.anchor = overlay::Anchor{this, Left, overlay::Vec{12, 0}, Left};
     auto textOffset = icon.size.x + 36;
 
-    nameText.anchor = ui::Anchor{this,
-        TopLeft, ui::Vec{textOffset, 12}, TopLeft};
-    pathText.anchor = ui::Anchor{this,
-        BottomLeft, ui::Vec{textOffset, -12}, BottomLeft};
+    nameText.anchor = overlay::Anchor{this,
+        TopLeft, overlay::Vec{textOffset, 12}, TopLeft};
+    pathText.anchor = overlay::Anchor{this,
+        BottomLeft, overlay::Vec{textOffset, -12}, BottomLeft};
     pathText.line_height = 20;
 
     nameText.line_height = 25;
 
-    nameText.bounds = ui::Vec{size.x - textOffset - 12, 0};
-    pathText.bounds = ui::Vec{size.x - textOffset - 12, 0};
+    nameText.bounds = overlay::Vec{size.x - textOffset - 12, 0};
+    pathText.bounds = overlay::Vec{size.x - textOffset - 12, 0};
 
     setPath(std::move(view));
 }
@@ -75,11 +75,11 @@ ContextMenu::ContextMenu(App& app)
     : box(app.BgColour, app.BorderColour, 2, 5)
     , stage(app.stage)
     , closeText(&app.menuFont, "Quit No More Shortcuts",
-            app.TextColour, ui::Vec{400, 0})
+            app.TextColour, overlay::Vec{400, 0})
     , highlight(app.HighlightColour, app.Transparent, 0, 3)
 {
 
-    using namespace ui::Alignments;
+    using namespace overlay::Alignments;
 
     visible = false;
 
@@ -87,7 +87,7 @@ ContextMenu::ContextMenu(App& app)
     std::cout << "Making closing text!\n";
     closeText.layout(*stage);
 
-    size = ui::Vec{
+    size = overlay::Vec{
         std::max(closeText.size.x + 20.f, 300.f),
         closeText.size.y + 30.f};
 
@@ -95,7 +95,7 @@ ContextMenu::ContextMenu(App& app)
     box.size = size;
 
     highlight.anchor.parent = this;
-    highlight.size = size - ui::Vec{10, 10};
+    highlight.size = size - overlay::Vec{10, 10};
     highlight.visible = false;
 }
 
@@ -106,46 +106,46 @@ ContextMenu::ContextMenu(App& app)
 // ------------------------------------------------------------------------- //
 // ------------------------------------------------------------------------- //
 
-App::App(ui::Stage *stage)
+App::App(overlay::Stage *stage)
     : stage(stage)
     , menu(*this)
     , queryBox(BgColour, BorderColour, 2, corner)
-    , queryText(&nameFont, "", TextColour, ui::Vec{queryWidth - 20, 0})
+    , queryText(&nameFont, "", TextColour, overlay::Vec{queryWidth - 20, 0})
     , resultsBox(BgColour, BorderColour, 2, corner)
 {
 
-    nameFont.align = ui::FontAlign::Leading;
+    nameFont.align = overlay::FontAlign::Leading;
     nameFont.ellipsize = true;
-    pathFont.align = ui::FontAlign::Leading;
-    pathFont.weight = ui::FontWeight::Thin;
+    pathFont.align = overlay::FontAlign::Leading;
+    pathFont.weight = overlay::FontWeight::Thin;
 
-    mainLayer = ui::layer(*stage, 0);
-    menuLayer = ui::layer(*stage, 1);
+    mainLayer = overlay::layer(*stage, 0);
+    menuLayer = overlay::layer(*stage, 1);
 
-    ui::update(*mainLayer, *this, false);
-    ui::focus(*mainLayer);
+    overlay::update(*mainLayer, *this, false);
+    overlay::focus(*mainLayer);
 
     visible = false;
 
-    using namespace ui::Alignments;
+    using namespace overlay::Alignments;
 
     keywords.push_back("");
 
-    queryBox.anchor = ui::Anchor{ui::screen(*stage),
-        Center, ui::Vec{0, 0}, Bottom};
-    queryBox.size = ui::Vec{queryWidth, 0};
+    queryBox.anchor = overlay::Anchor{overlay::screen(*stage),
+        Center, overlay::Vec{0, 0}, Bottom};
+    queryBox.size = overlay::Vec{queryWidth, 0};
 
     // queryText.alignTopToLine(true);
     // queryText.leftAdvance(true);
     // queryText.rightAdvance(true);
 
-    queryText.anchor = ui::Anchor{&queryBox, Bottom, ui::Vec{0, -17}, Bottom};
+    queryText.anchor = overlay::Anchor{&queryBox, Bottom, overlay::Vec{0, -17}, Bottom};
     queryText.align_top_to_line = true;
     queryText.left_advance = true;
     queryText.right_advance = true;
 
-    resultsBox.size = ui::Vec{800 * 1.5, 0};
-    resultsBox.anchor = ui::Anchor{&queryBox, Bottom, ui::Vec{0, 20}, Top};
+    resultsBox.size = overlay::Vec{800 * 1.5, 0};
+    resultsBox.anchor = overlay::Anchor{&queryBox, Bottom, overlay::Vec{0, 20}, Top};
 
     using namespace std::chrono;
 
@@ -180,10 +180,10 @@ App::App(ui::Stage *stage)
     show = false;
     menu.visible = false;
 
-    using enum ui::KeyMod;
-    using enum ui::KeyCode;
+    using enum overlay::KeyMod;
+    using enum overlay::KeyCode;
 
-    ui::add_hotkey(*stage, 0, KeySpace, ModControl, ModShift, ModNoRepeat);
+    overlay::add_hotkey(*stage, 0, KeySpace, ModControl, ModShift, ModNoRepeat);
 
     resetItems();
     updateQuery();
@@ -227,7 +227,7 @@ void App::resetItems(bool end)
 }
 
 void App::fixItemAnchors() {
-    using namespace ui::Alignments;
+    using namespace overlay::Alignments;
 
     if (items.empty())
     {
@@ -237,12 +237,12 @@ void App::fixItemAnchors() {
     {
         resultsBox.visible = true;
         auto height = items[0]->size.y;
-        items[0]->anchor = ui::Anchor{&resultsBox, Top, ui::Vec{0, 0}, Top};
+        items[0]->anchor = overlay::Anchor{&resultsBox, Top, overlay::Vec{0, 0}, Top};
         for (auto i = 1; i < items.size(); ++i)
         {
             height += items[i]->size.y;
-            items[i]->anchor = ui::Anchor{items[i - 1].get(),
-                Bottom, ui::Vec{0, 0}, Top};
+            items[i]->anchor = overlay::Anchor{items[i - 1].get(),
+                Bottom, overlay::Vec{0, 0}, Top};
         }
         resultsBox.size.y = height;
     }
@@ -266,7 +266,7 @@ void App::resetQuery()
 
 void App::update()
 {
-    ui::update(*mainLayer, *this, menu.visible);
+    overlay::update(*mainLayer, *this, menu.visible);
 }
 
 std::string App::join_query()
@@ -294,29 +294,6 @@ void App::updateQuery()
     resetItems();
     update();
 }
-
-// void filter(uint8_t matchBit, std::string_view keyword, bool lazy) {
-//   auto needle = std::string{keyword};
-//   std::transform(needle.begin(), needle.end(), needle.begin(), [](char c) { return std::tolower(c); });
-//   std::cout << std::format("filter {} -> {}\n", keyword, needle);
-
-//   using namespace std::chrono;
-//   std::cout << std::format("filter bits [{}] on \"{}\"\n", static_cast<uint32_t>(matchBit), keyword);
-//   auto start = steady_clock::now();
-//   if (lazy) {
-//     tree.matchLazy(tree.matchBits, matchBit, [&](std::string_view str) {
-//       return collator->fuzzy_find(str, needle);
-//     });
-//   } else {
-//     tree.match(matchBit, [&](std::string_view str) {
-//       return collator->fuzzy_find(str, needle);
-//     });
-//   }
-
-//   tree.propogateMatches(true);
-//   auto dur = steady_clock::now() - start;
-//   std::cout << std::format("completed in {} ms", duration_cast<milliseconds>(dur).count());
-// }
 
 void App::move(int delta)
 {
@@ -410,9 +387,9 @@ bool App::moveSelectedDown() {
     return true;
 }
 
-void App::onEvent(const ui::Event &e)
+void App::onEvent(const overlay::Event &e)
 {
-    using namespace ui::Events;
+    using namespace overlay::Events;
 
     // if (e.event() != MouseMoved) {
     //   std::cout << std::format("Event - {}\n",
@@ -426,19 +403,19 @@ void App::onEvent(const ui::Event &e)
     break;case Hotkey:
         show = true;
         update();
-        ui::focus(*mainLayer);
+        overlay::focus(*mainLayer);
     break;case NotifyContext:
         {
             menu.visible = true;
             menu.anchor = {
-                ui::screen(*stage),
-                ui::Alignments::TopLeft,
-                *ui::mouse_pos(e) + ui::Vec{50, -10},
-                ui::Alignments::BottomRight
+                overlay::screen(*stage),
+                overlay::Alignments::TopLeft,
+                *overlay::mouse_pos(e) + overlay::Vec{50, -10},
+                overlay::Alignments::BottomRight
             };
 
-            ui::update(*menuLayer, *this, menu.visible);
-            ui::focus(*menuLayer);
+            overlay::update(*menuLayer, *this, menu.visible);
+            overlay::focus(*menuLayer);
         }
     break;case FocusLost:
         if (menu.visible)
@@ -451,40 +428,40 @@ void App::onEvent(const ui::Event &e)
             // show = false;
             // update();
 
-            ui::hide(*menuLayer);
+            overlay::hide(*menuLayer);
         }
     break;case KeyPressed:
         {
-            using enum ui::KeyCode;
+            using enum overlay::KeyCode;
 
             switch (e.key())
             {
             break;case KeyEscape:
                 show = false;
-                ui::hide(*mainLayer);
+                overlay::hide(*mainLayer);
                 if (menu.visible)
                 {
                     menu.visible = false;
-                    ui::hide(*menuLayer);
+                    overlay::hide(*menuLayer);
                 }
             break;case MouseLButton:
                 std::cout << "MouseLButton!\n";
-                if (ui::mouseover(e, queryBox) ||ui::mouseover(e, resultsBox))
+                if (overlay::mouseover(e, queryBox) ||overlay::mouseover(e, resultsBox))
                 {
                     std::cout << "  Over query!\n";
                     update();
-                    ui::focus(*mainLayer);
+                    overlay::focus(*mainLayer);
                 }
 
-                if (menu.visible && ui::mouseover(e, menu))
+                if (menu.visible && overlay::mouseover(e, menu))
                 {
                     std::cout << "Hiding menu!\n";
-                    ui::quit(*stage, 0);
+                    overlay::quit(*stage, 0);
                 }
                 else
                 {
                     menu.visible = false;
-                    ui::hide(*menuLayer);
+                    overlay::hide(*menuLayer);
                 }
             break;case KeyArrowDown:
                 move(1);
@@ -506,7 +483,7 @@ void App::onEvent(const ui::Event &e)
                     favResultList->incrementUses(view->path());
                     resetQuery();
                     show = false;
-                    ui::hide(*mainLayer);
+                    overlay::hide(*mainLayer);
 
                     // system(("explorer \""+ str +"\"").c_str());
 
@@ -519,14 +496,14 @@ void App::onEvent(const ui::Event &e)
                 }
             }
             break;case KeyDelete:
-                if (ui::key_down(e, KeyLShift) && !items.empty())
+                if (overlay::key_down(e, KeyLShift) && !items.empty())
                 {
                     auto view = items[selection]->view.get();
                     favResultList->resetUses(view->path());
                     resetQuery();
                 }
             break;case KeyBackspace:
-                if (ui::key_down(e, KeyLShift)) {
+                if (overlay::key_down(e, KeyLShift)) {
                     resetQuery();
                 } else {
                     auto& keyword = keywords[keywords.size() - 1];
@@ -551,7 +528,7 @@ void App::onEvent(const ui::Event &e)
                     auto str = view->path().string();
                     std::cout << std::format("Copying {}!\n", str);
 
-                    OpenClipboard((HWND)mainLayer->hWnd);
+                    OpenClipboard(mainLayer->hWnd);
                     EmptyClipboard();
                     auto contentHandle = GlobalAlloc(GMEM_MOVEABLE, str.size() + 1);
                     auto contents = GlobalLock(contentHandle);
@@ -635,11 +612,11 @@ void App::onEvent(const ui::Event &e)
     break;case MouseMoved:
         if (menu.visible)
         {
-            auto next = ui::mouseover(e, menu.highlight);
+            auto next = overlay::mouseover(e, menu.highlight);
             if (next != menu.highlight.visible)
             {
                 menu.highlight.visible = next;
-                ui::update(*menuLayer, menu, true);
+                overlay::update(*menuLayer, menu, true);
             }
         }
     }
@@ -652,14 +629,27 @@ void App::onEvent(const ui::Event &e)
 // ------------------------------------------------------------------------- //
 // ------------------------------------------------------------------------- //
 
-int AppMain()
+int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, int nCmdShow)
 {
-    CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
+// int main() {
+    try
+    {
+        CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
 
-    auto stage = ui::stage();
-    auto app = App{&stage};
+        auto stage = overlay::stage();
+        auto app = App{&stage};
 
-    return ui::run(stage, [&](const ui::Event& e) {
-        app.onEvent(e);
-    });
+        return overlay::run(stage, [&](const overlay::Event& e) {
+            app.onEvent(e);
+        });
+    }
+    catch (std::exception& e)
+    {
+        std::cout << "Error: " << e.what() << '\n';
+    }
+    catch (...)
+    {
+        std::cout << "Something went wrong!";
+    }
+    return 1;
 }

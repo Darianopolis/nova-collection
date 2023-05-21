@@ -1,14 +1,16 @@
 #include <optional>
 
-#define WIN32_LEAN_AND_MEAN
-#define NOMINMAX
-#include <Windows.h>
-#include <windowsx.h>
-#include <d2d1.h>
-#include <dwrite.h>
-#include <shellapi.h>
-#include <wincodec.h>
-#include <CommCtrl.h>
+// #define WIN32_LEAN_AND_MEAN
+// #define NOMINMAX
+// #include <Windows.h>
+// #include <windowsx.h>
+// #include <d2d1.h>
+// #include <dwrite.h>
+// #include <shellapi.h>
+// #include <wincodec.h>
+// #include <CommCtrl.h>
+
+#include "Win32Include.hpp"
 
 #include <chrono>
 #include <thread>
@@ -16,8 +18,6 @@
 #include <future>
 #include <ranges>
 
-#include <WinAPIWrapper.h>
-#define _OVERLAY_IMPL_
 #include "Overlay.hpp"
 #include "OverlayDirectX.hpp"
 #include "ScopeGuards.hpp"
@@ -33,8 +33,36 @@
 constexpr UINT WMAPP_REDRAW_ICONS   = WM_APP + 1;
 constexpr UINT WMAPP_NOTIFYCALLBACK = WM_APP + 2;
 
-namespace overlay_ui
+namespace overlay
 {
+    void ConvertToWString(std::string_view input, std::wstring& output)
+    {
+        int length = MultiByteToWideChar(CP_UTF8, MB_PRECOMPOSED, input.data(), int(input.size()), nullptr, 0);
+        output.resize(length);
+        MultiByteToWideChar(CP_UTF8, MB_PRECOMPOSED, input.data(), int(input.size()), output.data(), length);
+    }
+
+    std::wstring ConvertToWString(std::string_view input)
+    {
+        std::wstring str;
+        ConvertToWString(input, str);
+        return str;
+    }
+
+    void ConvertToString(std::wstring_view input, std::string& output)
+    {
+        BOOL usedDefault = FALSE;
+        int length = WideCharToMultiByte(CP_UTF8, MB_PRECOMPOSED, input.data(), int(input.size()), nullptr, 0, "?", &usedDefault);
+        output.resize(length);
+        WideCharToMultiByte(CP_UTF8, MB_PRECOMPOSED, input.data(), int(input.size()), output.data(), length, "?", &usedDefault);
+    }
+
+    std::string ConvertToString(std::wstring_view input)
+    {
+        std::string str;
+        ConvertToString(input, str);
+        return str;
+    }
 
     // ---------------------------------------- //
     // ------------- Icon Loading ------------- //
@@ -73,7 +101,7 @@ namespace overlay_ui
 
                 lock.unlock();
 
-                auto path = win::String{request->path};
+                auto path = ConvertToWString(request->path);
 
                 // using namespace std::chrono_literals;
                 // std::this_thread::sleep_for(50ms);
@@ -84,7 +112,7 @@ namespace overlay_ui
                 auto icon = IconPtr{};
                 auto info = SHFILEINFO{};
                 auto list = reinterpret_cast<HIMAGELIST>(SHGetFileInfoW(
-                    path,
+                    path.c_str(),
                     FILE_ATTRIBUTE_NORMAL,
                     &info,
                     sizeof(info),
@@ -98,25 +126,25 @@ namespace overlay_ui
 
                 if (!icon)
                 {
-                    SHGetFileInfoW(path, FILE_ATTRIBUTE_NORMAL, &info, sizeof(info),
+                    SHGetFileInfoW(path.c_str(), FILE_ATTRIBUTE_NORMAL, &info, sizeof(info),
                         SHGFI_ICON | SHGFI_LARGEICON);
                     icon = IconPtr{info.hIcon};
                 }
 
-                auto bitmap = win::ComPtr<ID2D1Bitmap>{};
+                auto bitmap = ComPtr<ID2D1Bitmap>{};
 
                 if (icon)
                 {
-                    auto wic = stage->wic.get();
+                    auto wic = stage->wic.Get();
 
-                    auto wic_bitmap = win::ComPtr<IWICBitmap>{};
-                    wic->CreateBitmapFromHICON(icon.get(), wic_bitmap.set());
+                    auto wic_bitmap = ComPtr<IWICBitmap>{};
+                    wic->CreateBitmapFromHICON(icon.get(), wic_bitmap.GetAddressOf());
 
-                    auto converter = win::ComPtr<IWICFormatConverter>{};
-                    wic->CreateFormatConverter(converter.set());
+                    auto converter = ComPtr<IWICFormatConverter>{};
+                    wic->CreateFormatConverter(converter.GetAddressOf());
 
                     converter->Initialize(
-                        wic_bitmap.get(),
+                        wic_bitmap.Get(),
                         GUID_WICPixelFormat32bppPBGRA,
                         WICBitmapDitherTypeNone,
                         nullptr, 0,
@@ -130,9 +158,9 @@ namespace overlay_ui
                         .dpiY = 96};
 
                     render_target->CreateBitmapFromWicBitmap(
-                        converter.get(),
+                        converter.Get(),
                         &props,
-                        bitmap.set());
+                        bitmap.GetAddressOf());
                 }
 
                 lock.lock();
@@ -268,7 +296,7 @@ namespace overlay_ui
             return;
         }
 
-        render_target = stage->render_target.get();
+        render_target = stage->render_target.Get();
         version = stage->render_target_version;
 
         render_target->BeginDraw();
@@ -309,9 +337,9 @@ namespace overlay_ui
         // Draw windows bounds in debug mode
         if (stage->debug)
         {
-            auto brush = win::ComPtr<ID2D1SolidColorBrush>{};
-            render_target->CreateSolidColorBrush(D2D1::ColorF(0,0,0,1), brush.set());
-            render_target->DrawRectangle(D2D1::RectF(0, 0, width, height), brush.get(), 5);
+            auto brush = ComPtr<ID2D1SolidColorBrush>{};
+            render_target->CreateSolidColorBrush(D2D1::ColorF(0,0,0,1), brush.GetAddressOf());
+            render_target->DrawRectangle(D2D1::RectF(0, 0, width, height), brush.Get(), 5);
         }
 
         // Draw bitmap to window and update Layer bounds
@@ -360,7 +388,7 @@ namespace overlay_ui
     inline ID2D1SolidColorBrush* get_brush(const Frame& frame, Color c)
     {
         frame.stage->brush->SetColor(D2D1::ColorF(c.r, c.g, c.b, c.a));
-        return frame.stage->brush.get();
+        return frame.stage->brush.Get();
     }
 
     void Frame::box(
@@ -403,7 +431,7 @@ namespace overlay_ui
 
     bool Stage::bindDC(HDC hdc, RECT &rc)
     {
-        if (!render_target.exists())
+        if (!render_target)
         {
             const auto properties = D2D1::RenderTargetProperties(
                 D2D1_RENDER_TARGET_TYPE_DEFAULT,
@@ -412,15 +440,15 @@ namespace overlay_ui
 
             render_target_version = getUID();
 
-            if (FAILED(d2d1->CreateDCRenderTarget(&properties, render_target.set())))
+            if (FAILED(d2d1->CreateDCRenderTarget(&properties, render_target.GetAddressOf())))
                 return false;
 
-            render_target->CreateSolidColorBrush(D2D1::ColorF(0, 0, 0, 0), brush.set());
+            render_target->CreateSolidColorBrush(D2D1::ColorF(0, 0, 0, 0), brush.ReleaseAndGetAddressOf());
         }
 
         if (FAILED(render_target->BindDC(hdc, &rc)))
         {
-            render_target.set();
+            render_target.Reset();
             return false;
         }
 
@@ -431,19 +459,19 @@ namespace overlay_ui
     {
         D2D1CreateFactory(
             D2D1_FACTORY_TYPE_MULTI_THREADED,
-            d2d1.set());
+            d2d1.GetAddressOf());
 
         DWriteCreateFactory(
             DWRITE_FACTORY_TYPE_SHARED,
             __uuidof(IDWriteFactory),
-            reinterpret_cast<IUnknown**>(dwrite.set()));
+            reinterpret_cast<IUnknown**>(dwrite.GetAddressOf()));
 
         CoCreateInstance(
             CLSID_WICImagingFactory,
             nullptr,
             CLSCTX_INPROC_SERVER | CLSCTX_LOCAL_SERVER,
             __uuidof(IWICImagingFactory),
-            reinterpret_cast<void**>(wic.set()));
+            reinterpret_cast<void**>(wic.GetAddressOf()));
     }
 
     void Stage::updateScreens()
@@ -467,8 +495,7 @@ namespace overlay_ui
         // Icon
         auto info = SHFILEINFO{};
         auto list = reinterpret_cast<HIMAGELIST>(SHGetFileInfoW(
-            // win::String("D:\\Dev\\Projects\\nomoreshortcuts-shared\\icons\\IconRound\\icon_round.ico"),
-            win::String("favicon.ico"),
+            L"favicon.ico",
             FILE_ATTRIBUTE_NORMAL, &info, sizeof(info), SHGFI_SYSICONINDEX));
         if (list)
             icon = ImageList_GetIcon(list, info.iIcon, ILD_NORMAL);
@@ -496,14 +523,14 @@ namespace overlay_ui
     {
         for (auto i = 0; i < 2; ++i)
         {
-            auto name = win::String{std::format("Layer{}", i)};
+            auto name = ConvertToWString(std::format("Layer{}", i));
             std::wcout << L"Creating window - " << name << L'\n';
 
             auto hWnd = CreateWindowExW(
                 WS_EX_LAYERED
                     | WS_EX_NOACTIVATE,
                 L"Layer",
-                name,
+                name.c_str(),
                 WS_POPUP,
                 CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT,
                 nullptr, nullptr, instance, this);
@@ -537,9 +564,9 @@ namespace overlay_ui
             .guidItem = guid
         };
 
-        auto wtip = win::String{tooltip};
+        auto wtip = ConvertToWString(tooltip);
 
-        memcpy(&nid.szTip, wtip, (wtip.length() + 1) * 2);
+        memcpy(&nid.szTip, wtip.c_str(), (wtip.length() + 1) * 2);
 
         Shell_NotifyIconW(NIM_ADD, &nid);
         nid.uVersion = NOTIFYICON_VERSION_4;
@@ -937,12 +964,12 @@ namespace overlay_ui
 
         // std::cout << "future = " << cache.icon_future << '\n';
         std::lock_guard future_lock{cache.icon_future->mutex};
-        if (cache.icon_future->icon.exists())
+        if (cache.icon_future->icon)
         {
             // std::cout << "   icon = " << cache.icon_future->icon.get() << '\n';
             auto p = point_at(Alignments::TopLeft) - context.screen_pos;
             context.render_target->DrawBitmap(
-                cache.icon_future->icon.get(),
+                cache.icon_future->icon.Get(),
                 D2D1::RectF(p.x, p.y, p.x + size.x, p.y + size.y));
         }
     }
@@ -967,22 +994,22 @@ namespace overlay_ui
 
     IDWriteTextFormat* GetTextFormat(Font& font, const Stage& stage)
     {
-        if (!font.cache.format.exists())
+        if (!font.cache.format)
         {
             std::cout << "GetTextFormat!\n";
             std::cout << " stage = " << &stage << '\n';
-            std::cout << " dwrite = " << stage.dwrite.get() << '\n';
-            auto factory = stage.dwrite.get();
+            std::cout << " dwrite = " << stage.dwrite.Get() << '\n';
+            auto factory = stage.dwrite.Get();
 
             factory->CreateTextFormat(
-                win::String(font.name),
+                ConvertToWString(font.name).c_str(),
                 nullptr,
                 static_cast<DWRITE_FONT_WEIGHT>(font.weight),
                 static_cast<DWRITE_FONT_STYLE>(font.style),
                 static_cast<DWRITE_FONT_STRETCH>(font.stretch),
                 font.size,
-                win::String(font.locale),
-                font.cache.format.set());
+                ConvertToWString(font.locale).c_str(),
+                font.cache.format.ReleaseAndGetAddressOf());
 
             font.cache.format->SetTextAlignment(static_cast<DWRITE_TEXT_ALIGNMENT>(font.align));
             font.cache.format->SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_CENTER);
@@ -990,15 +1017,15 @@ namespace overlay_ui
             if (font.ellipsize)
             {
                 auto trimming = DWRITE_TRIMMING{DWRITE_TRIMMING_GRANULARITY_CHARACTER, 0, 0};
-                auto trimmingSign = win::ComPtr<IDWriteInlineObject>{};
-                factory->CreateEllipsisTrimmingSign(font.cache.format.get(), trimmingSign.set());
-                font.cache.format->SetTrimming(&trimming, trimmingSign.get());
+                auto trimmingSign = ComPtr<IDWriteInlineObject>{};
+                factory->CreateEllipsisTrimmingSign(font.cache.format.Get(), trimmingSign.GetAddressOf());
+                font.cache.format->SetTrimming(&trimming, trimmingSign.Get());
             }
 
             return nullptr;
         }
 
-        return font.cache.format.get();
+        return font.cache.format.Get();
     }
 
     Font::~Font() {}
@@ -1023,7 +1050,7 @@ namespace overlay_ui
             cache = nullptr;
 
         auto format = GetTextFormat(*font, stage);
-        if (cache.layout.exists())
+        if (cache.layout)
         {
             if (format)
                 return;
@@ -1034,15 +1061,15 @@ namespace overlay_ui
             format = GetTextFormat(*font, stage);
         }
 
-        auto pDWriteFactory = stage.dwrite.get();
-        auto wString = win::String(text);
+        auto pDWriteFactory = stage.dwrite.Get();
+        auto wString = ConvertToWString(text);
 
         pDWriteFactory->CreateTextLayout(
-            wString,
+            wString.c_str(),
             wString.length(),
             format,
             bounds.x, bounds.y,
-            cache.layout.set());
+            cache.layout.ReleaseAndGetAddressOf());
 
         if (line_height != 0)
         {
@@ -1107,7 +1134,7 @@ namespace overlay_ui
 
     int Text::lineCount()
     {
-        if (!cache.layout.exists())
+        if (!cache.layout)
             return 0;
         auto metrics = DWRITE_TEXT_METRICS{};
         cache.layout->GetMetrics(&metrics);
@@ -1129,25 +1156,25 @@ namespace overlay_ui
         if (context.stage->debug)
         {
             // Debug - Create a box to show the actual bounds
-            auto brush = win::ComPtr<ID2D1SolidColorBrush>{};
-            pRenderTarget->CreateSolidColorBrush(D2D1::ColorF(0.2,0.2,0.2,0.5), brush.set());
+            auto brush = ComPtr<ID2D1SolidColorBrush>{};
+            pRenderTarget->CreateSolidColorBrush(D2D1::ColorF(0.2,0.2,0.2,0.5), brush.GetAddressOf());
             pRenderTarget->FillRectangle(
                     D2D1::RectF(
                         p.x,
                         p.y,
                         p.x + size.x,
                         p.y + size.y),
-                brush.get());
+                brush.Get());
 
             // Debug - Create a box to show the baseline padding
-            pRenderTarget->CreateSolidColorBrush(D2D1::ColorF(0.2,0.7,0.2,0.5), brush.set());
+            pRenderTarget->CreateSolidColorBrush(D2D1::ColorF(0.2,0.7,0.2,0.5), brush.ReleaseAndGetAddressOf());
             pRenderTarget->FillRectangle(
                     D2D1::RectF(
                         p.x,
                         p.y + size.y,
                         p.x + size.x,
                         p.y + size.y + padding.bottom),
-                brush.get());
+                brush.Get());
         }
 
         // Render with correct antialising setting
@@ -1156,7 +1183,7 @@ namespace overlay_ui
             : D2D1_TEXT_ANTIALIAS_MODE_CLEARTYPE);
         pRenderTarget->DrawTextLayout(
             D2D1::Point2F(tp.x, tp.y),
-            cache.layout.get(),
+            cache.layout.Get(),
             get_brush(context, color));
     }
 

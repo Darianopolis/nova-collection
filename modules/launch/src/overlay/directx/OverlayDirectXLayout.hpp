@@ -1,13 +1,11 @@
 #pragma once
-#ifndef OVERLAY_DIRECTX_ENUM_H
-#define OVERLAY_DIRECTX_ENUM_H
 
 #include <type_traits>
 #include <mutex>
 
-#include "WinAPIWrapper.h"
+#include "Win32Include.hpp"
 
-namespace overlay_ui
+namespace overlay
 {
     // https://docs.microsoft.com/en-us/windows/win32/inputdev/virtual-key-codes
 
@@ -107,7 +105,7 @@ namespace overlay_ui
 
     struct FontCache
     {
-        win::ComPtr<win::dwrite::TextFormat> format;
+        ComPtr<IDWriteTextFormat> format;
 
         FontCache();
         ~FontCache();
@@ -119,7 +117,7 @@ namespace overlay_ui
     {
         // size_t version = 0;
         // win::ComPtr<win::d2d1::SolidColorBrush> brush;
-        win::ComPtr<win::dwrite::TextLayout> layout;
+        ComPtr<IDWriteTextLayout> layout;
 
         TextCache();
         ~TextCache();
@@ -131,7 +129,7 @@ namespace overlay_ui
 
     struct IconFuture
     {
-        win::ComPtr<win::d2d1::Bitmap> icon;
+        ComPtr<ID2D1Bitmap> icon;
         std::mutex mutex;
         bool cancelled = false;
         uint8_t age = 0;
@@ -149,5 +147,3 @@ namespace overlay_ui
         ~IconCache();
     };
 }
-
-#endif // !OVERLAY_DIRECTX_ENUM_H

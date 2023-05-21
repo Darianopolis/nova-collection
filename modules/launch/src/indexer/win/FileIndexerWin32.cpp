@@ -1,4 +1,4 @@
-#include "fs_index.hpp"
+#include "FileIndexer.hpp"
 
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX

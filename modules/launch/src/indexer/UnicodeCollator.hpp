@@ -1,6 +1,4 @@
 #pragma once
-#ifndef UNICODE_COLLATOR_H
-#define UNICODE_COLLATOR_H
 
 #include <string>
 #include <string_view>
@@ -24,5 +22,3 @@ private:
 
     UnicodeCollator(const std::vector<char> utf8_lookup, const std::vector<char> utf32_lookup);
 };
-
-#endif // !UNICODE_COLLATOR_H

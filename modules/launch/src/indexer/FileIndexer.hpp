@@ -1,14 +1,12 @@
 #pragma once
-#ifndef FS_INDEX_HPP
-#define FS_INDEX_HPP
+
+#include "UnicodeCollator.hpp"
 
 #include <iostream>
 #include <chrono>
 #include <filesystem>
 #include <fstream>
 #include <execution>
-
-#include "UnicodeCollator.hpp"
 
 static size_t nodes_created = 0;
 static size_t nodes_destroyed = 0;
@@ -262,5 +260,3 @@ struct Node
 Node* index_drive(char drive);
 
 NodeIndex flatten(std::vector<NodeView> nodes);
-
-#endif // !DARIANOPOLIS_INDEX_HPP

@@ -1,6 +1,4 @@
 #pragma once
-#ifndef NMS_PATH_TREE_H
-#define NMS_PATH_TREE_H
 
 #include <string>
 #include <vector>
@@ -9,10 +7,8 @@
 #include <optional>
 #include <iostream>
 #include <functional>
-
 #include <algorithm>
 #include <execution>
-
 #include <format>
 #include <span>
 
@@ -709,5 +705,3 @@ public:
         return PathTree(std::move(data), std::move(nodes));
     }
 };
-
-#endif // !NMS_PATH_TREE_H

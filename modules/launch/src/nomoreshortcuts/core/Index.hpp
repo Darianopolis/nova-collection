@@ -1,14 +1,12 @@
 #pragma once
-#ifndef NMS_INDEX_HPP
-#define NMS_INDEX_HPP
+
+#include <PathTree.hpp>
+#include <UnicodeCollator.hpp>
 
 #include <string>
 #include <vector>
 #include <regex>
 #include <format>
-
-#include "PathTree.hpp"
-#include "UnicodeCollator.hpp"
 
 struct Index
 {
@@ -103,5 +101,3 @@ struct Index
         // std::cout << std::format("  After query, match bits = {:08b}\n", tree.matchBits);
     }
 };
-
-#endif // !NMS_INDEX_HPP

@@ -11,7 +11,7 @@
 #include "directx/OverlayDirectXLayout.hpp"
 #endif
 
-namespace overlay_ui
+namespace overlay
 {
     struct Vec {
         float x, y;
@@ -431,8 +431,8 @@ namespace overlay_ui
         template<class NodeImpl>
         void operator ()(NodeImpl& node)
         {
-            overlay_ui::draw(node, frame);
-            overlay_ui::traverse(node, *this);
+            overlay::draw(node, frame);
+            overlay::traverse(node, *this);
         }
     };
 
@@ -448,8 +448,8 @@ namespace overlay_ui
         template<class NodeImpl>
         void operator ()(NodeImpl& node)
         {
-            overlay_ui::reposition(node, rect);
-            overlay_ui::traverse(node, *this);
+            overlay::reposition(node, rect);
+            overlay::traverse(node, *this);
         }
     };
 
@@ -523,13 +523,13 @@ namespace overlay_ui
             bounds.bottom = snap * std::ceil(rect.bottom / snap);
         }
 
-        auto frame = overlay_ui::frame(layer, sticky, bounds);
-        if (!overlay_ui::drawable(frame))
+        auto frame = overlay::frame(layer, sticky, bounds);
+        if (!overlay::drawable(frame))
             return;
 
         NodeDrawVisitor{frame}(node);
 
-        overlay_ui::push(frame);
+        overlay::push(frame);
     }
 }
 

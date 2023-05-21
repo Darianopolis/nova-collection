@@ -1,12 +1,11 @@
 #pragma once
-#ifndef NMS_QUERY_H
-#define NMS_QUERY_H
 
-#include "sqlite3.h"
-#include "PathTree.hpp"
-#include "ScopeGuards.hpp"
-#include "fs_index.hpp"
 #include "Index.hpp"
+
+#include <sqlite3.h>
+#include <PathTree.hpp>
+#include <ScopeGuards.hpp>
+#include <FileIndexer.hpp>
 
 #include <string>
 #include <filesystem>
@@ -585,7 +584,6 @@ public:
             auto &node = index.nodes[i];
             if (((node.match | node.inherited_match) & match_bits) == match_bits)
             {
-                // auto path = std::filesystem::path(flat[i].node->string());
                 auto path = std::filesystem::path(make_str(i));
                 if (!favourites->containsPath(path))
                     return std::make_unique<FileResultItem>(std::move(path), i);
@@ -594,15 +592,6 @@ public:
         }
         return nullptr;
     };
-
-//   bool contains(const ResultItem& item) override {
-//     return dynamic_cast<const FileResultItem*>(&item);
-//   }
-
-//   bool filter(const ResultItem& item) override {
-//     const FileResultItem* current = dynamic_cast<const FileResultItem*>(&item);
-//     return current && tree->filter(current->view);
-//   }
 
     bool contains(const ResultItem& item) override
     {
@@ -618,74 +607,3 @@ public:
         return ((node.match | node.inherited_match) & match_bits) == match_bits;
     }
 };
-
-// -------------------- OLD FILE RESULT ITEM -------------------- //
-
-// class FileResultItem : public ResultItem {
-//   friend class FileResultList;
-
-//   PathView view;
-// public:
-
-//   FileResultItem(PathView view)
-//     : view(view) {
-//   }
-
-//   const std::filesystem::path& path() const override {
-//     return view.path();
-//   }
-// };
-
-// class FileResultList : public ResultList {
-//   std::unique_ptr<Index> index;
-//   PathTree* tree;
-//   FavResultList* favourites;
-// public:
-//   FileResultList(FavResultList* favourites)
-//     : index(new Index(getenv("USERPROFILE") + std::string("\\.nms\\tree.bin")))
-//     , favourites(favourites) {
-
-//     tree = &index->tree;
-
-//     std::cout << "NUM PATHS = " << tree->nodes.size() << '\n';
-//   }
-
-//   void query(QueryAction action, std::string_view query) {
-//     index->query(std::string(query));
-//   };
-
-//   std::unique_ptr<ResultItem> next(const ResultItem* item) override {
-//     const FileResultItem* current = dynamic_cast<const FileResultItem*>(item);
-//     auto next = tree->next(current ? &current->view : nullptr);
-
-//     while (next.has_value() && favourites->containsPath(next->path()))
-//       next = tree->next(&*next);
-
-//     return next.has_value()
-//       ? std::make_unique<FileResultItem>(std::move(next.value()))
-//       : nullptr;
-//   }
-
-//   std::unique_ptr<ResultItem> prev(const ResultItem* item) override {
-//     const FileResultItem* current = dynamic_cast<const FileResultItem*>(item);
-//     auto prev = tree->prev(current ? &current->view : nullptr);
-
-//     while (prev.has_value() && favourites->containsPath(prev->path()))
-//       prev = tree->prev(&*prev);
-
-//     return prev.has_value()
-//       ? std::make_unique<FileResultItem>(std::move(prev.value()))
-//       : nullptr;
-//   }
-
-//   bool contains(const ResultItem& item) override {
-//     return dynamic_cast<const FileResultItem*>(&item);
-//   }
-
-//   bool filter(const ResultItem& item) override {
-//     const FileResultItem* current = dynamic_cast<const FileResultItem*>(&item);
-//     return current && tree->filter(current->view);
-//   }
-// };
-
-#endif // !NMS_QUERY_H

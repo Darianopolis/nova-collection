@@ -11,7 +11,6 @@ if Project "nms-v2" then
         "src/common",
         "src/indexer",
         "src/overlay",
-        "src/winwrap",
         "src/nomoreshortcuts",
         "src/nomoreshortcuts/core",
     }
