@@ -1,0 +1,6 @@
+.vscode
+.VSCodeCounter
+build
+out
+imgui.ini
+index.txt
