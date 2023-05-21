@@ -19,3 +19,12 @@ if Project "nms-v2" then
 
     Artifact { "out/NoMoreShortcuts", type = "Window" }
 end
+
+if Project "nms-v2-box" then
+    Compile "src/boxtest/**"
+    Import {
+        "glfw",
+        "glad",
+    }
+    Artifact { "out/main", type = "Console" }
+end
