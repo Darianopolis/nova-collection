@@ -1,5 +1,15 @@
 #include "NoMoreShortcuts.hpp"
 
+#define WIN32_LEAN_AND_MEAN
+#define NOMINMAX
+#include <Windows.h>
+#include <shellapi.h>
+#include <combaseapi.h>
+
+#include <thread>
+
+using namespace std::literals;
+
 LaunchItem::LaunchItem(App& app, std::unique_ptr<ResultItem> view)
   : nameText(&app.nameFont, "", app.TextColour, ui::Vec{app.itemWidth, 0})
   , pathText(&app.pathFont, "", app.TextColour, ui::Vec{app.itemWidth, 0})
@@ -8,8 +18,8 @@ LaunchItem::LaunchItem(App& app, std::unique_ptr<ResultItem> view)
   , stage(app.stage) {
 
   using namespace ui::Alignments;
-  
-  size = ui::Vec{app.itemWidth, 0}; 
+
+  size = ui::Vec{app.itemWidth, 0};
   box.size = size;
   box.anchor.parent = this;
   box.visible = false;
@@ -18,9 +28,9 @@ LaunchItem::LaunchItem(App& app, std::unique_ptr<ResultItem> view)
   icon.anchor = ui::Anchor{this, Left, ui::Vec{12, 0}, Left};
   auto textOffset = icon.size.x + 36;
 
-  nameText.anchor = ui::Anchor{this, 
+  nameText.anchor = ui::Anchor{this,
     TopLeft, ui::Vec{textOffset, 12}, TopLeft};
-  pathText.anchor = ui::Anchor{this, 
+  pathText.anchor = ui::Anchor{this,
     BottomLeft, ui::Vec{textOffset, -12}, BottomLeft};
   pathText.line_height = 20;
 
@@ -37,7 +47,7 @@ void LaunchItem::setPath(std::unique_ptr<ResultItem> newView) {
 
   auto folder = view->path().parent_path().string();
   auto name = view->path().filename().string();
-  
+
   nameText.text = name.empty() ? folder : name;
   pathText.text = folder;
   icon.path = view->path().string();
@@ -45,7 +55,7 @@ void LaunchItem::setPath(std::unique_ptr<ResultItem> newView) {
 
   nameText.layout(*stage, true);
   pathText.layout(*stage, true);
-  
+
   auto height = 55.f + 20.f * pathText.lineCount();
 
   size.y = height;
@@ -62,10 +72,10 @@ void LaunchItem::setPath(std::unique_ptr<ResultItem> newView) {
 ContextMenu::ContextMenu(App& app)
   : box(app.BgColour, app.BorderColour, 2, 5)
   , stage(app.stage)
-  , closeText(&app.menuFont, "Quit No More Shortcuts", 
+  , closeText(&app.menuFont, "Quit No More Shortcuts",
       app.TextColour, ui::Vec{400, 0})
   , highlight(app.HighlightColour, app.Transparent, 0, 3) {
-  
+
   using namespace ui::Alignments;
 
   visible = false;
@@ -75,7 +85,7 @@ ContextMenu::ContextMenu(App& app)
   closeText.layout(*stage);
 
   size = ui::Vec{
-    std::max(closeText.size.x + 20.f, 300.f), 
+    std::max(closeText.size.x + 20.f, 300.f),
     closeText.size.y + 30.f};
 
   box.anchor.parent = this;
@@ -107,7 +117,7 @@ App::App(ui::Stage *stage)
 
   mainLayer = ui::layer(*stage, 0);
   menuLayer = ui::layer(*stage, 1);
-  
+
   ui::update(*mainLayer, *this, false);
   ui::focus(*mainLayer);
 
@@ -117,11 +127,11 @@ App::App(ui::Stage *stage)
 
   keywords.push_back("");
 
-  queryBox.anchor = ui::Anchor{ui::screen(*stage), 
+  queryBox.anchor = ui::Anchor{ui::screen(*stage),
     Center, ui::Vec{0, 0}, Bottom};
   queryBox.size = ui::Vec{queryWidth, 0};
 
-  // queryText.alignTopToLine(true); 
+  // queryText.alignTopToLine(true);
   // queryText.leftAdvance(true);
   // queryText.rightAdvance(true);
 
@@ -129,7 +139,7 @@ App::App(ui::Stage *stage)
   queryText.align_top_to_line = true;
   queryText.left_advance = true;
   queryText.right_advance = true;
-  
+
   resultsBox.size = ui::Vec{800 * 1.5, 0};
   resultsBox.anchor = ui::Anchor{&queryBox, Bottom, ui::Vec{0, 20}, Top};
 
@@ -215,7 +225,7 @@ void App::fixItemAnchors() {
     items[0]->anchor = ui::Anchor{&resultsBox, Top, ui::Vec{0, 0}, Top};
     for (auto i = 1; i < items.size(); ++i) {
       height += items[i]->size.y;
-      items[i]->anchor = ui::Anchor{items[i - 1].get(), 
+      items[i]->anchor = ui::Anchor{items[i - 1].get(),
         Bottom, ui::Vec{0, 0}, Top};
     }
     resultsBox.size.y = height;
@@ -256,7 +266,7 @@ void App::updateQuery() {
   queryText.text = join_query();
   queryText.layout(*stage, true);
   queryBox.size.y = queryText.size.y + 20;
-  
+
   resetItems();
   update();
 }
@@ -278,7 +288,7 @@ void App::updateQuery() {
 //       return collator->fuzzy_find(str, needle);
 //     });
 //   }
-  
+
 //   tree.propogateMatches(true);
 //   auto dur = steady_clock::now() - start;
 //   std::cout << std::format("completed in {} ms", duration_cast<milliseconds>(dur).count());
@@ -366,11 +376,11 @@ void App::onEvent(const ui::Event &e) {
       ui::focus(*mainLayer);
     break;case NotifyContext: {
       menu.visible = true;
-      menu.anchor = { 
-        ui::screen(*stage), 
-        ui::Alignments::TopLeft, 
-        *ui::mouse_pos(e) + ui::Vec{50, -10}, 
-        ui::Alignments::BottomRight 
+      menu.anchor = {
+        ui::screen(*stage),
+        ui::Alignments::TopLeft,
+        *ui::mouse_pos(e) + ui::Vec{50, -10},
+        ui::Alignments::BottomRight
       };
 
       ui::update(*menuLayer, *this, menu.visible);
@@ -385,14 +395,14 @@ void App::onEvent(const ui::Event &e) {
         // // This won't be required once the menu is rendered in a different layer!
         // show = false;
         // update();
-        
+
         ui::hide(*menuLayer);
       }
     break;case KeyPressed: {
       using enum ui::KeyCode;
 
       switch (e.key()) {
-        break;case KeyEscape: 
+        break;case KeyEscape:
           show = false;
           ui::hide(*mainLayer);
           if (menu.visible) {
@@ -434,7 +444,14 @@ void App::onEvent(const ui::Event &e) {
             show = false;
             ui::hide(*mainLayer);
 
-            system(("explorer \""+ str +"\"").c_str());
+            // system(("explorer \""+ str +"\"").c_str());
+
+            if ((GetKeyState(VK_LSHIFT) & 0x8000)
+              && (GetKeyState(VK_LCONTROL) & 0x8000)) {
+              ShellExecuteA(nullptr, "runas", str.c_str(), nullptr, nullptr, SW_SHOW);
+            } else {
+              ShellExecuteA(nullptr, "open", str.c_str(), nullptr, nullptr, SW_SHOW);
+            }
           }
         }
         break;case KeyDelete: {
@@ -462,6 +479,70 @@ void App::onEvent(const ui::Event &e) {
               resultList->query(QueryAction::SET, join_query());
               updateQuery();
             }
+          }
+        }
+        break;case KeyC: {
+          if (GetKeyState(VK_LCONTROL) & 0x8000) {
+            if (!items.empty()) {
+              auto view = items[selection]->view.get();
+              auto str = view->path().string();
+              std::cout << std::format("Copying {}!\n", str);
+
+              OpenClipboard((HWND)mainLayer->hWnd);
+              EmptyClipboard();
+              auto contentHandle = GlobalAlloc(GMEM_MOVEABLE, str.size() + 1);
+              auto contents = GlobalLock(contentHandle);
+              memcpy(contents, str.data(), str.size() + 1);
+              for (auto c = (char*)contents; *c; ++c)
+                *c = *c == '\\' ? '/' : *c;
+              GlobalUnlock(contentHandle);
+              SetClipboardData(CF_TEXT, contentHandle);
+              CloseClipboard();
+            }
+          }
+        }
+        break;case KeyF5: {
+          if (GetKeyState(VK_CONTROL) & 0x8000) {
+
+            static std::atomic_bool indexing = false;
+
+            bool expected = false;
+            if (indexing.compare_exchange_strong(expected, true)) {
+              std::thread t([=, this] {
+                AllocConsole();
+                auto handle = freopen("CONOUT$", "w", stdout);
+
+                std::vector<char> drives;
+                wchar_t driveNames[1024];
+                GetLogicalDriveStringsW(1023, driveNames);
+                for (wchar_t* drive = driveNames; *drive; drive += wcslen(drive) + 1) {
+                  drives.push_back((char)drive[0]);
+                }
+
+                for (auto& d : drives) {
+                  auto *node = index_drive(d);
+                  auto saveLoc = std::format("{}\\.nms\\{}.index", getenv("USERPROFILE"), d);
+                  std::cout << std::format("Saving to {}\n", saveLoc);
+                  node->save(saveLoc);
+                }
+
+                std::cout << "Indexing complete. Close this window and refresh the index with F5 in app.\n";
+                FreeConsole();
+
+                indexing = false;
+              });
+
+              t.detach();
+            }
+          } else {
+            resultList = std::make_unique<ResultListPriorityCollector>();
+            favResultList = std::make_unique<FavResultList>(&keywords);
+            fileResultList = std::make_unique<FileResultList>(favResultList.get());
+            resultList->addList(favResultList.get());
+            resultList->addList(fileResultList.get());
+
+            resetItems();
+            updateQuery();
           }
         }
       }
@@ -505,7 +586,10 @@ void App::onEvent(const ui::Event &e) {
 // ------------------------------------------------------------------------- //
 // ------------------------------------------------------------------------- //
 
-int AppMain() {
+int AppMain()
+{
+  CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
+
   auto stage = ui::stage();
   auto app = App{&stage};
 

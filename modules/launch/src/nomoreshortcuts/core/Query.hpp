@@ -165,8 +165,8 @@ public:
 
   void create() {
     sqlite3 *db{nullptr};
-    ON_SCOPE_EXIT(&) { 
-      sqlite3_close(db); 
+    ON_SCOPE_EXIT(&) {
+      sqlite3_close(db);
     };
 
     sql(sqlite3_open(appDb.c_str(), &db), db);
@@ -186,15 +186,15 @@ public:
 
     favourites.clear();
     sql(sqlite3_exec(
-        db, 
-        "SELECT path FROM favourites ORDER BY uses DESC", 
+        db,
+        "SELECT path FROM favourites ORDER BY uses DESC",
         [](void* list, int, char** val, char**) {
           std::cout << std::format("path = {}\n", val[0]);
           auto& fav = *static_cast<std::vector<std::unique_ptr<FavResultItem>>*>(list);
           fav.push_back(std::make_unique<FavResultItem>(val[0]));
           return 0;
-        }, 
-        &favourites, 
+        },
+        &favourites,
         &sql_errno));
   }
 
@@ -246,7 +246,7 @@ public:
   }
 
   void query(QueryAction action, std::string_view query) final {
-    
+
   }
 
   bool filter(const std::filesystem::path& path) {
@@ -267,7 +267,7 @@ public:
       if (i == favourites.end()) return nullptr;
       i++;
     }
-    
+
     while (i != favourites.end() && !filter((*i)->path())) i++;
     return i != favourites.end()
       ? std::make_unique<FavResultItem>((*i)->path())
@@ -297,7 +297,7 @@ public:
   bool contains(const ResultItem& item) final {
     return dynamic_cast<const FavResultItem*>(&item) != nullptr;
   }
-  
+
   bool containsPath(const std::filesystem::path& path) {
     return std::ranges::find_if(favourites, [&](auto& item) {
       return item->path() == path;
@@ -314,7 +314,7 @@ class FileResultItem : public ResultItem {
   std::filesystem::path _path;
 public:
   FileResultItem(std::filesystem::path&& path, size_t index)
-    : index(index) 
+    : index(index)
     , _path(path) {}
 
   virtual const std::filesystem::path& path() const override {
@@ -334,15 +334,15 @@ public:
   FileResultList(FavResultList* favourites)
     : favourites(favourites)
     , match_bits(0)
-    , collator(UnicodeCollator::new_ascii_collator()) 
+    , collator(UnicodeCollator::new_ascii_collator())
   {
     using namespace std::chrono;
 
     auto start = steady_clock::now();
     {
       std::vector<std::unique_ptr<Node>> roots;
-      auto *c = Node::load(getenv("USERPROFILE") + std::string("\\.nms\\c.index"));
-      auto *d = Node::load(getenv("USERPROFILE") + std::string("\\.nms\\d.index"));
+      auto *c = Node::load(getenv("USERPROFILE") + std::string("\\.nms\\C.index"));
+      auto *d = Node::load(getenv("USERPROFILE") + std::string("\\.nms\\D.index"));
       if (c) roots.emplace_back(c);
       if (d) roots.emplace_back(d);
       std::cout << "Loaded nodes in " << duration_cast<milliseconds>(steady_clock::now() - start) << '\n';
@@ -387,12 +387,12 @@ public:
           }
         }
       });
-    } 
+    }
     else {
       std::for_each(std::execution::par_unseq, index.nodes.begin(), index.nodes.end(), [&](auto& view) {
         std::string_view haystack { &index.str[view.str_offset], view.len };
         view.match = collator->fuzzy_find(haystack, needle)
-          ? view.match | matchBit 
+          ? view.match | matchBit
           : view.match & ~matchBit;
       });
     }
@@ -532,7 +532,7 @@ public:
 
 //   PathView view;
 // public:
-  
+
 //   FileResultItem(PathView view)
 //     : view(view) {
 //   }
@@ -549,24 +549,24 @@ public:
 // public:
 //   FileResultList(FavResultList* favourites)
 //     : index(new Index(getenv("USERPROFILE") + std::string("\\.nms\\tree.bin")))
-//     , favourites(favourites) { 
+//     , favourites(favourites) {
 
 //     tree = &index->tree;
 
 //     std::cout << "NUM PATHS = " << tree->nodes.size() << '\n';
 //   }
-  
-//   void query(QueryAction action, std::string_view query) { 
+
+//   void query(QueryAction action, std::string_view query) {
 //     index->query(std::string(query));
 //   };
 
 //   std::unique_ptr<ResultItem> next(const ResultItem* item) override {
 //     const FileResultItem* current = dynamic_cast<const FileResultItem*>(item);
 //     auto next = tree->next(current ? &current->view : nullptr);
-    
+
 //     while (next.has_value() && favourites->containsPath(next->path()))
 //       next = tree->next(&*next);
-    
+
 //     return next.has_value()
 //       ? std::make_unique<FileResultItem>(std::move(next.value()))
 //       : nullptr;

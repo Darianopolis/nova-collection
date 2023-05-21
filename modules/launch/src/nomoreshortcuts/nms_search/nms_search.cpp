@@ -7,7 +7,9 @@
 int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, int nCmdShow) {
 // int main() {
   try {
-    AttachConsole(GetCurrentProcessId());
+    // AttachConsole(GetCurrentProcessId());
+    // AllocConsole();
+    // freopen("CONOUT$", "w", stdout);
     return AppMain();
   } catch (std::exception& e) {
     std::cout << "Error: " << e.what() << '\n';
