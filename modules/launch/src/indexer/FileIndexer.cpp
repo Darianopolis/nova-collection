@@ -11,21 +11,21 @@ NodeIterator::NodeIterator(const NodeIterator& i)
     : nodes(i.nodes)
 {}
 
-Node& NodeIterator::operator *() const noexcept
+Node& NodeIterator::operator*() const noexcept
 {
     return *nodes.back().node;
 }
 
-Node* NodeIterator::operator ->() const noexcept
+Node* NodeIterator::operator->() const noexcept
 {
     return nodes.back().node;
 }
 
-NodeIterator& NodeIterator::operator ++()
+NodeIterator& NodeIterator::operator++()
 {
-    NodeIteratorRef *ref = &nodes.back();
+    NodeIteratorRef* ref = &nodes.back();
 
-    if (ref->index < ref->node->n_children)
+    if (ref->index < ref->node->numChildren)
     {
         nodes.emplace_back(ref->node->children[ref->index++], 0);
     }
@@ -36,9 +36,9 @@ NodeIterator& NodeIterator::operator ++()
             nodes.pop_back();
             ref = &nodes.back();
         }
-        while (nodes.size() > 1 && ref->index == ref->node->n_children);
+        while (nodes.size() > 1 && ref->index == ref->node->numChildren);
 
-        if (ref->index < ref->node->n_children)
+        if (ref->index < ref->node->numChildren)
         {
             nodes.emplace_back(ref->node->children[ref->index++], 0);
         }
@@ -47,32 +47,32 @@ NodeIterator& NodeIterator::operator ++()
     return *this;
 }
 
-bool operator ==(const NodeIterator &l, const NodeIterator& r)
+bool operator==(const NodeIterator &l, const NodeIterator& r)
 {
     return l.nodes.back() == r.nodes.back();
 }
 
-NodeIndex flatten(std::vector<NodeView> nodes) {
+NodeIndex Flatten(std::vector<NodeView> nodes) {
     std::vector<NodeFlat> flattened;
     std::string str;
 
     // Pre-assign indexes for each node (and sum str len for next step)
     // This allows for children to be sorted before their parent!
-    size_t str_len_total = 0;
+    size_t strLenTotal = 0;
     for (size_t i = 0; i < nodes.size(); ++i)
     {
         nodes[i].node->index = i;
-        str_len_total += nodes[i].node->len;
+        strLenTotal += nodes[i].node->len;
     }
 
     // Pre-allocate memory since we know exact sizes!
     flattened.reserve(nodes.size());
-    str.reserve(str_len_total);
+    str.reserve(strLenTotal);
 
     // Copy out path and index data from nodes
     for (auto &view : nodes)
     {
-        auto parent_index = (view.node->parent)
+        auto parentIndex = (view.node->parent)
             ? view.node->parent->index
             : view.node->index;
 
@@ -81,7 +81,7 @@ NodeIndex flatten(std::vector<NodeView> nodes) {
 
         flattened.emplace_back(
             (uint32_t)str_offset,
-            (uint32_t)parent_index,
+            (uint32_t)parentIndex,
             view.node->depth,
             view.node->len);
     }

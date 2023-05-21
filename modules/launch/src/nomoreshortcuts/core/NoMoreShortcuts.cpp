@@ -33,32 +33,32 @@ LaunchItem::LaunchItem(App& app, std::unique_ptr<ResultItem> view)
         TopLeft, overlay::Vec{textOffset, 12}, TopLeft};
     pathText.anchor = overlay::Anchor{this,
         BottomLeft, overlay::Vec{textOffset, -12}, BottomLeft};
-    pathText.line_height = 20;
+    pathText.lineHeight = 20;
 
-    nameText.line_height = 25;
+    nameText.lineHeight = 25;
 
     nameText.bounds = overlay::Vec{size.x - textOffset - 12, 0};
     pathText.bounds = overlay::Vec{size.x - textOffset - 12, 0};
 
-    setPath(std::move(view));
+    SetPath(std::move(view));
 }
 
-void LaunchItem::setPath(std::unique_ptr<ResultItem> newView)
+void LaunchItem::SetPath(std::unique_ptr<ResultItem> newView)
 {
     this->view = std::move(newView);
 
-    auto folder = view->path().parent_path().string();
-    auto name = view->path().filename().string();
+    auto folder = view->GetPath().parent_path().string();
+    auto name = view->GetPath().filename().string();
 
     nameText.text = name.empty() ? folder : name;
     pathText.text = folder;
-    icon.path = view->path().string();
+    icon.path = view->GetPath().string();
     icon.cache = nullptr;
 
-    nameText.layout(*stage, true);
-    pathText.layout(*stage, true);
+    nameText.Layout(*stage, true);
+    pathText.Layout(*stage, true);
 
-    auto height = 55.f + 20.f * pathText.lineCount();
+    auto height = 55.f + 20.f * pathText.LineCount();
 
     size.y = height;
     box.size.y = height;
@@ -85,7 +85,7 @@ ContextMenu::ContextMenu(App& app)
 
     closeText.anchor.parent = this;
     std::cout << "Making closing text!\n";
-    closeText.layout(*stage);
+    closeText.Layout(*stage);
 
     size = overlay::Vec{
         std::max(closeText.size.x + 20.f, 300.f),
@@ -106,7 +106,7 @@ ContextMenu::ContextMenu(App& app)
 // ------------------------------------------------------------------------- //
 // ------------------------------------------------------------------------- //
 
-App::App(overlay::Stage *stage)
+App::App(overlay::Stage* stage)
     : stage(stage)
     , menu(*this)
     , queryBox(BgColour, BorderColour, 2, corner)
@@ -119,11 +119,11 @@ App::App(overlay::Stage *stage)
     pathFont.align = overlay::FontAlign::Leading;
     pathFont.weight = overlay::FontWeight::Thin;
 
-    mainLayer = overlay::layer(*stage, 0);
-    menuLayer = overlay::layer(*stage, 1);
+    mainLayer = overlay::CreateLayer(*stage, 0);
+    menuLayer = overlay::CreateLayer(*stage, 1);
 
-    overlay::update(*mainLayer, *this, false);
-    overlay::focus(*mainLayer);
+    overlay::Update(*mainLayer, *this, false);
+    overlay::Focus(*mainLayer);
 
     visible = false;
 
@@ -131,7 +131,7 @@ App::App(overlay::Stage *stage)
 
     keywords.push_back("");
 
-    queryBox.anchor = overlay::Anchor{overlay::screen(*stage),
+    queryBox.anchor = overlay::Anchor{overlay::GetScreen(*stage),
         Center, overlay::Vec{0, 0}, Bottom};
     queryBox.size = overlay::Vec{queryWidth, 0};
 
@@ -140,9 +140,9 @@ App::App(overlay::Stage *stage)
     // queryText.rightAdvance(true);
 
     queryText.anchor = overlay::Anchor{&queryBox, Bottom, overlay::Vec{0, -17}, Bottom};
-    queryText.align_top_to_line = true;
-    queryText.left_advance = true;
-    queryText.right_advance = true;
+    queryText.alignTopToLine = true;
+    queryText.leftAdvance = true;
+    queryText.rightAdvance = true;
 
     resultsBox.size = overlay::Vec{800 * 1.5, 0};
     resultsBox.anchor = overlay::Anchor{&queryBox, Bottom, overlay::Vec{0, 20}, Top};
@@ -161,8 +161,8 @@ App::App(overlay::Stage *stage)
     resultList = std::make_unique<ResultListPriorityCollector>();
     favResultList = std::make_unique<FavResultList>(&keywords);
     fileResultList = std::make_unique<FileResultList>(favResultList.get());
-    resultList->addList(favResultList.get());
-    resultList->addList(fileResultList.get());
+    resultList->AddList(favResultList.get());
+    resultList->AddList(fileResultList.get());
 
     // std::cout << std::format("loaded {} nodes in {} ms\n", fileResultList.tree.nodes.size(), dur);
 
@@ -183,23 +183,23 @@ App::App(overlay::Stage *stage)
     using enum overlay::KeyMod;
     using enum overlay::KeyCode;
 
-    overlay::add_hotkey(*stage, 0, KeySpace, ModControl, ModShift, ModNoRepeat);
+    overlay::AddHotkey(*stage, 0, KeySpace, ModControl, ModShift, ModNoRepeat);
 
-    resetItems();
-    updateQuery();
+    ResetItems();
+    UpdateQuery();
 }
 
-void App::resetItems(bool end)
+void App::ResetItems(bool end)
 {
     items.clear();
     if (end)
     {
-        auto item = resultList->prev(nullptr);
+        auto item = resultList->Prev(nullptr);
         if (item)
         {
             auto itemP = item.get();
             items.push_back(std::make_unique<LaunchItem>(*this, std::move(item)));
-            while ((items.size() < 5) && (item = resultList->prev(itemP)))
+            while ((items.size() < 5) && (item = resultList->Prev(itemP)))
             {
                 itemP = item.get();
                 items.push_back(std::make_unique<LaunchItem>(*this, std::move(item)));
@@ -210,12 +210,12 @@ void App::resetItems(bool end)
     }
     else
     {
-        auto item = resultList->next(nullptr);
+        auto item = resultList->Next(nullptr);
         if (item)
         {
             auto itemP = item.get();
             items.push_back(std::make_unique<LaunchItem>(*this, std::move(item)));
-            while ((items.size() < 5) && (item = resultList->next(itemP)))
+            while ((items.size() < 5) && (item = resultList->Next(itemP)))
             {
                 itemP = item.get();
                 items.push_back(std::make_unique<LaunchItem>(*this, std::move(item)));
@@ -223,10 +223,10 @@ void App::resetItems(bool end)
         }
         selection = 0;
     }
-    fixItemAnchors();
+    FixItemAnchors();
 }
 
-void App::fixItemAnchors() {
+void App::FixItemAnchors() {
     using namespace overlay::Alignments;
 
     if (items.empty())
@@ -254,22 +254,22 @@ void App::fixItemAnchors() {
         items[selection]->box.visible = true;
 }
 
-void App::resetQuery()
+void App::ResetQuery()
 {
     keywords.clear();
     keywords.emplace_back();
     // tree.setMatchBits(1, 1, 0, 0);
     // tree.matchBits = 1;
-    resultList->query(QueryAction::SET, "");
-    updateQuery();
+    resultList->Query(QueryAction::SET, "");
+    UpdateQuery();
 }
 
-void App::update()
+void App::Update()
 {
-    overlay::update(*mainLayer, *this, menu.visible);
+    overlay::Update(*mainLayer, *this, menu.visible);
 }
 
-std::string App::join_query()
+std::string App::JoinQuery()
 {
     auto str = std::string{};
     for (auto& k : keywords) {
@@ -285,36 +285,36 @@ std::string App::join_query()
     return str;
 }
 
-void App::updateQuery()
+void App::UpdateQuery()
 {
-    queryText.text = join_query();
-    queryText.layout(*stage, true);
+    queryText.text = JoinQuery();
+    queryText.Layout(*stage, true);
     queryBox.size.y = queryText.size.y + 20;
 
-    resetItems();
-    update();
+    ResetItems();
+    Update();
 }
 
-void App::move(int delta)
+void App::Move(int delta)
 {
     auto i = delta;
     if (i < 0)
     {
-        while (moveSelectedUp() && ++i < 0);
+        while (MoveSelectedUp() && ++i < 0);
     }
     else if (i > 0)
     {
-        while (moveSelectedDown() && --i > 0);
+        while (MoveSelectedDown() && --i > 0);
     }
 
     if (delta != i)
     {
-        fixItemAnchors();
-        update();
+        FixItemAnchors();
+        Update();
     }
 }
 
-bool App::moveSelectedUp()
+bool App::MoveSelectedUp()
 {
     if (items.empty())
         return false;
@@ -332,11 +332,11 @@ bool App::moveSelectedUp()
     }
     else
     {
-        auto prev = resultList->prev(items[0].get()->view.get());
+        auto prev = resultList->Prev(items[0].get()->view.get());
         if (prev)
         {
             std::rotate(items.rbegin(), items.rbegin() + 1, items.rend());
-            items[0]->setPath(std::move(prev));
+            items[0]->SetPath(std::move(prev));
         }
         else if (selection > 0)
         {
@@ -351,7 +351,7 @@ bool App::moveSelectedUp()
     return true;
 }
 
-bool App::moveSelectedDown() {
+bool App::MoveSelectedDown() {
     if (items.empty())
          return false;
 
@@ -368,11 +368,11 @@ bool App::moveSelectedDown() {
     }
     else
     {
-        auto next = resultList->next(items[items.size() - 1].get()->view.get());
+        auto next = resultList->Next(items[items.size() - 1].get()->view.get());
         if (next)
         {
             std::rotate(items.begin(), items.begin() + 1, items.end());
-            items[items.size() - 1]->setPath(std::move(next));
+            items[items.size() - 1]->SetPath(std::move(next));
         }
         else if (selection < 4)
         {
@@ -387,7 +387,7 @@ bool App::moveSelectedDown() {
     return true;
 }
 
-void App::onEvent(const overlay::Event &e)
+void App::OnEvent(const overlay::Event &e)
 {
     using namespace overlay::Events;
 
@@ -399,23 +399,23 @@ void App::onEvent(const overlay::Event &e)
     switch (e.event)
     {
     break;case IconsLoaded:
-        update();
+        Update();
     break;case Hotkey:
         show = true;
-        update();
-        overlay::focus(*mainLayer);
+        Update();
+        overlay::Focus(*mainLayer);
     break;case NotifyContext:
         {
             menu.visible = true;
             menu.anchor = {
-                overlay::screen(*stage),
+                overlay::GetScreen(*stage),
                 overlay::Alignments::TopLeft,
-                *overlay::mouse_pos(e) + overlay::Vec{50, -10},
+                *overlay::GetMousePos(e) + overlay::Vec{50, -10},
                 overlay::Alignments::BottomRight
             };
 
-            overlay::update(*menuLayer, *this, menu.visible);
-            overlay::focus(*menuLayer);
+            overlay::Update(*menuLayer, *this, menu.visible);
+            overlay::Focus(*menuLayer);
         }
     break;case FocusLost:
         if (menu.visible)
@@ -428,62 +428,62 @@ void App::onEvent(const overlay::Event &e)
             // show = false;
             // update();
 
-            overlay::hide(*menuLayer);
+            overlay::Hide(*menuLayer);
         }
     break;case KeyPressed:
         {
             using enum overlay::KeyCode;
 
-            switch (e.key())
+            switch (e.GetKey())
             {
             break;case KeyEscape:
                 show = false;
-                overlay::hide(*mainLayer);
+                overlay::Hide(*mainLayer);
                 if (menu.visible)
                 {
                     menu.visible = false;
-                    overlay::hide(*menuLayer);
+                    overlay::Hide(*menuLayer);
                 }
             break;case MouseLButton:
                 std::cout << "MouseLButton!\n";
-                if (overlay::mouseover(e, queryBox) ||overlay::mouseover(e, resultsBox))
+                if (overlay::Mouseover(e, queryBox) ||overlay::Mouseover(e, resultsBox))
                 {
                     std::cout << "  Over query!\n";
-                    update();
-                    overlay::focus(*mainLayer);
+                    Update();
+                    overlay::Focus(*mainLayer);
                 }
 
-                if (menu.visible && overlay::mouseover(e, menu))
+                if (menu.visible && overlay::Mouseover(e, menu))
                 {
                     std::cout << "Hiding menu!\n";
-                    overlay::quit(*stage, 0);
+                    overlay::Quit(*stage, 0);
                 }
                 else
                 {
                     menu.visible = false;
-                    overlay::hide(*menuLayer);
+                    overlay::Hide(*menuLayer);
                 }
             break;case KeyArrowDown:
-                move(1);
+                Move(1);
             break;case KeyArrowUp:
-                move(-1);
+                Move(-1);
             break;case KeyArrowLeft:
-                resetItems();
-                update();
+                ResetItems();
+                Update();
             break;case KeyArrowRight:
-                resetItems(true);
-                update();
+                ResetItems(true);
+                Update();
             break;case KeyReturn: {
                 if (!items.empty())
                 {
                     auto view = items[selection]->view.get();
-                    auto str = view->path().string();
+                    auto str = view->GetPath().string();
                     std::cout << std::format("Running {}!\n", str);
 
-                    favResultList->incrementUses(view->path());
-                    resetQuery();
+                    favResultList->IncrementUses(view->GetPath());
+                    ResetQuery();
                     show = false;
-                    overlay::hide(*mainLayer);
+                    overlay::Hide(*mainLayer);
 
                     // system(("explorer \""+ str +"\"").c_str());
 
@@ -496,36 +496,36 @@ void App::onEvent(const overlay::Event &e)
                 }
             }
             break;case KeyDelete:
-                if (overlay::key_down(e, KeyLShift) && !items.empty())
+                if (overlay::KeyDown(e, KeyLShift) && !items.empty())
                 {
                     auto view = items[selection]->view.get();
-                    favResultList->resetUses(view->path());
-                    resetQuery();
+                    favResultList->ResetUses(view->GetPath());
+                    ResetQuery();
                 }
             break;case KeyBackspace:
-                if (overlay::key_down(e, KeyLShift)) {
-                    resetQuery();
+                if (overlay::KeyDown(e, KeyLShift)) {
+                    ResetQuery();
                 } else {
                     auto& keyword = keywords[keywords.size() - 1];
                     auto matchBit = static_cast<uint8_t>(1 << (keywords.size() - 1));
                     if (keyword.length() > 0) {
                         keyword.pop_back();
                         // filter(matchBit, keyword, false);
-                        resultList->query(QueryAction::SET, join_query());
-                        updateQuery();
+                        resultList->Query(QueryAction::SET, JoinQuery());
+                        UpdateQuery();
                     } else if (keywords.size() > 1) {
                         keywords.pop_back();
                         // tree.setMatchBits(matchBit, 0, matchBit, 0);
                         // tree.matchBits &= ~matchBit;
-                        resultList->query(QueryAction::SET, join_query());
-                        updateQuery();
+                        resultList->Query(QueryAction::SET, JoinQuery());
+                        UpdateQuery();
                     }
                 }
             break;case KeyC:
                 if ((GetKeyState(VK_LCONTROL) & 0x8000) && !items.empty())
                 {
                     auto view = items[selection]->view.get();
-                    auto str = view->path().string();
+                    auto str = view->GetPath().string();
                     std::cout << std::format("Copying {}!\n", str);
 
                     OpenClipboard(mainLayer->hWnd);
@@ -560,10 +560,10 @@ void App::onEvent(const overlay::Event &e)
 
                             for (auto& d : drives)
                             {
-                                auto *node = index_drive(d);
+                                auto* node = IndexDrive(d);
                                 auto saveLoc = std::format("{}\\.nms\\{}.index", getenv("USERPROFILE"), d);
                                 std::cout << std::format("Saving to {}\n", saveLoc);
-                                node->save(saveLoc);
+                                node->Save(saveLoc);
                             }
 
                             std::cout << "Indexing complete. Close this window and refresh the index with F5 in app.\n";
@@ -580,16 +580,16 @@ void App::onEvent(const overlay::Event &e)
                     resultList = std::make_unique<ResultListPriorityCollector>();
                     favResultList = std::make_unique<FavResultList>(&keywords);
                     fileResultList = std::make_unique<FileResultList>(favResultList.get());
-                    resultList->addList(favResultList.get());
-                    resultList->addList(fileResultList.get());
+                    resultList->AddList(favResultList.get());
+                    resultList->AddList(fileResultList.get());
 
-                    resetItems();
-                    updateQuery();
+                    ResetItems();
+                    UpdateQuery();
                 }
             }
         break;case CharTyped:
             {
-                auto c = static_cast<char>(e.codepoint());
+                auto c = static_cast<char>(e.GetCodepoint());
                 auto& keyword = keywords[keywords.size() - 1];
                 if (c == ' ') {
                     if (keyword.size() == 0 || keywords.size() == 8) return;
@@ -602,21 +602,21 @@ void App::onEvent(const overlay::Event &e)
                     // auto matchBit = static_cast<uint8_t>(1 << (keywords.size() - 1));
                     keyword += c;
                     // filter(matchBit, keyword, true);
-                    resultList->query(QueryAction::SET, join_query());
+                    resultList->Query(QueryAction::SET, JoinQuery());
                 }
-                updateQuery();
+                UpdateQuery();
             }
         }
     break;case MouseScroll:
-        move((int)-e.delta().y);
+        Move((int)-e.GetDelta().y);
     break;case MouseMoved:
         if (menu.visible)
         {
-            auto next = overlay::mouseover(e, menu.highlight);
+            auto next = overlay::Mouseover(e, menu.highlight);
             if (next != menu.highlight.visible)
             {
                 menu.highlight.visible = next;
-                overlay::update(*menuLayer, menu, true);
+                overlay::Update(*menuLayer, menu, true);
             }
         }
     }
@@ -636,11 +636,11 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine
     {
         CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
 
-        auto stage = overlay::stage();
+        auto stage = overlay::CreateStage();
         auto app = App{&stage};
 
-        return overlay::run(stage, [&](const overlay::Event& e) {
-            app.onEvent(e);
+        return overlay::Run(stage, [&](const overlay::Event& e) {
+            app.OnEvent(e);
         });
     }
     catch (std::exception& e)

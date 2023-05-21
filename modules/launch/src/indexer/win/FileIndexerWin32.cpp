@@ -16,14 +16,14 @@ struct WinIndexer
         wcscpy(path, root);
     }
 
-    static void index(Node* node, const wchar_t* root)
+    static void Index(Node* node, const wchar_t* root)
     {
         WinIndexer s(root);
         std::wcout << "Indexing " << root << L"\n";
-        s._search(node, wcslen(root), 0);
+        s.Search(node, wcslen(root), 0);
     }
 
-    void _search(Node* node, size_t offset, uint8_t depth)
+    void Search(Node* node, size_t offset, uint8_t depth)
     {
         path[offset] = '\\';
         path[offset + 1] = '*';
@@ -31,7 +31,7 @@ struct WinIndexer
 
         // std::wcout << L"in = " << path << L"\n";
 
-        HANDLE find_handle = FindFirstFileEx(
+        HANDLE findHandle = FindFirstFileEx(
             path,
             FindExInfoBasic,
             &result,
@@ -39,7 +39,7 @@ struct WinIndexer
             nullptr,
             FIND_FIRST_EX_LARGE_FETCH);
 
-        if (find_handle == INVALID_HANDLE_VALUE)
+        if (findHandle == INVALID_HANDLE_VALUE)
             return;
 
         do
@@ -49,8 +49,8 @@ struct WinIndexer
             if (len == 0 || (result.cFileName[0] == '.' && (len == 1 || (len == 2 && result.cFileName[1] == '.'))))
                 continue;
 
-            bool used_default = false;
-            size_t utf8_len = WideCharToMultiByte(
+            bool usedDefault = false;
+            size_t utf8Len = WideCharToMultiByte(
                 CP_UTF8,
                 0,
                 result.cFileName,
@@ -58,19 +58,19 @@ struct WinIndexer
                 utf8Buffer,
                 sizeof(utf8Buffer) - 1,
                 nullptr,
-                (LPBOOL)&used_default);
+                (LPBOOL)&usedDefault);
 
-            if (utf8_len == 0)
+            if (utf8Len == 0)
             {
                 std::wcout << "Failed to convert " << result.cFileName << L"!\n";
                 continue;
             }
 
-            char *name = new char[utf8_len + 1];
-            memcpy(name, utf8Buffer, utf8_len);
-            name[utf8_len] = '\0';
-            Node *child = new Node(name, utf8_len, node, depth);
-            node->add_child(child);
+            char* name = new char[utf8Len + 1];
+            memcpy(name, utf8Buffer, utf8Len);
+            name[utf8Len] = '\0';
+            Node* child = new Node(name, utf8Len, node, depth);
+            node->AddChild(child);
 
             if (++count % 10000 == 0)
             {
@@ -80,25 +80,25 @@ struct WinIndexer
             if (result.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
             {
                 memcpy(&path[offset + 1], result.cFileName, 2 * len);
-                _search(child, offset + len + 1, depth == 255 ? 255 : depth + 1);
+                Search(child, offset + len + 1, depth == 255 ? 255 : depth + 1);
                 // _search(nullptr, offset + len + 1, depth == 255 ? 255 : depth + 1);
             }
         }
-        while (FindNextFile(find_handle, &result));
+        while (FindNextFile(findHandle, &result));
 
-        FindClose(find_handle);
+        FindClose(findHandle);
     }
 };
 
-Node* index_drive(char drive_letter)
+Node* IndexDrive(char driverLetter)
 {
-    char upper = std::toupper(drive_letter);
+    char upper = std::toupper(driverLetter);
 
     std::cout << "Drive letter = " << upper << '\n';
 
-    auto *node = new Node(new char[] { upper, ':', '\\', '\0' }, 3, nullptr, 0);
+    auto* node = new Node(new char[] { upper, ':', '\\', '\0' }, 3, nullptr, 0);
     wchar_t init[] { L'\\', L'\\', L'?', L'\\', static_cast<wchar_t>(upper), L':', };
-    WinIndexer::index(node, init);
+    WinIndexer::Index(node, init);
 
     std::cout << "Indexed!\n";
 

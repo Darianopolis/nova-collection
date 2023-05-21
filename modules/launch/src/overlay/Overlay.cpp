@@ -6,89 +6,89 @@ namespace overlay
     // ------------- Events ------------- //
     // ---------------------------------- //
 
-    Event::Event(Layer *layer, Stage *stage, EventCategory category, EventID event) noexcept
-        : layer(layer)
-        , stage(stage)
-        , category(category)
-        , event(event)
+    Event::Event(Layer* _layer, Stage* _stage, EventCategory _category, EventID _event) noexcept
+        : layer(_layer)
+        , stage(_stage)
+        , category(_category)
+        , event(_event)
     {}
 
-    Event::Event(Layer *layer, Stage *stage, EventCategory category, EventID event, KeyCode key) noexcept
-        : layer(layer)
-        , stage(stage)
-        , category(category)
-        , event(event)
+    Event::Event(Layer* _layer, Stage* _stage, EventCategory _category, EventID _event, KeyCode key) noexcept
+        : layer(_layer)
+        , stage(_stage)
+        , category(_category)
+        , event(_event)
         , data(key)
     {}
 
-    Event::Event(Layer *layer, Stage *stage, EventCategory category, EventID event, uint32_t codepoint) noexcept
-        : layer(layer)
-        , stage(stage)
-        , category(category)
-        , event(event)
+    Event::Event(Layer* _layer, Stage*_stage, EventCategory _category, EventID _event, uint32_t codepoint) noexcept
+        : layer(_layer)
+        , stage(_stage)
+        , category(_category)
+        , event(_event)
         , data(codepoint)
     {}
 
-    Event::Event(Layer *layer, Stage *stage, EventCategory category, EventID event, Vec delta) noexcept
-        : layer(layer)
-        , stage(stage)
-        , category(category)
-        , event(event)
+    Event::Event(Layer* _layer, Stage* _stage, EventCategory _category, EventID _event, Vec delta) noexcept
+        : layer(_layer)
+        , stage(_stage)
+        , category(_category)
+        , event(_event)
         , data(delta)
     {}
 
-    KeyCode Event::key() const noexcept
+    KeyCode Event::GetKey() const noexcept
     {
         return std::get<KeyCode>(data);
     }
 
-    uint32_t Event::codepoint() const noexcept
+    uint32_t Event::GetCodepoint() const noexcept
     {
         return std::get<uint32_t>(data);
     }
 
-    Vec Event::delta() const noexcept
+    Vec Event::GetDelta() const noexcept
     {
         return std::get<Vec>(data);
     }
 
-    bool mouseover(const Event& event, Node& node)
+    bool Mouseover(const Event& event, Node& node)
     {
-        auto pos = overlay::mouse_pos(event);
-        return pos && node.check_hit(*pos);
+        auto pos = overlay::GetMousePos(event);
+        return pos && node.CheckHit(*pos);
     }
 
     // -------------------------------- //
     // ------------- Text ------------- //
     // -------------------------------- //
 
-    Text::Text(Font* font, std::string_view str, Color color, Vec bounds)
-        : font(font)
+    Text::Text(Font* _font, std::string_view str, Color _color, Vec _bounds)
+        : font(_font)
         , text(str)
-        , color(color)
-        , bounds(bounds)
+        , color(_color)
+        , bounds(_bounds)
     {}
 
     // -------------------------------- //
     // ------------- Font ------------- //
     // -------------------------------- //
 
-    Font::Font(std::string_view name, float size)
-        : name(name)
-        , size(size)
+    Font::Font(std::string_view _name, float _size)
+        : name(_name)
+        , size(_size)
     {}
 
     // ------------------------------- //
     // ------------- Box ------------- //
     // ------------------------------- //
 
-    Box::Box(Color bg_color, Color border_color, float border_width, float corner_radius)
-        : border_width(border_width)
-        , background(bg_color)
-        , border(border_color)
-        , corner_radius(corner_radius)
+    Box::Box(Color bgColor, Color borderColor, float _borderWidth, float cornerRadius)
+        : borderWidth(_borderWidth)
+        , background(bgColor)
+        , border(borderColor)
+        , cornerRadius(cornerRadius)
     {
-        padding = Rect{border_width, border_width, border_width, border_width};
+        padding = Rect{_borderWidth, _borderWidth, _borderWidth, _borderWidth};
     }
 
     // -------------------------------- //

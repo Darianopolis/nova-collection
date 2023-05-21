@@ -26,10 +26,10 @@ public:
 
     overlay::Node* beingDragged = nullptr;
 
-    overlay::Stage *stage;
-    overlay::Layer *layer;
+    overlay::Stage* stage;
+    overlay::Layer* layer;
 
-    BoxDemo(overlay::Stage *stage)
+    BoxDemo(overlay::Stage* stage)
         : stage(stage)
         , box1(overlay::Color{ 0.1f, 0.1f, 0.1f }, overlay::Color{ 0, 1, 0 }, 5, 0)
         , box2(overlay::Color{ 0.1f, 0.1f, 0.1f }, overlay::Color{ 1, 0, 0 }, 5, 50)
@@ -43,31 +43,31 @@ public:
 
         using namespace overlay::Alignments;
 
-        box1.anchor = { overlay::screen(*stage), Center, overlay::Vec{ -5, 0 }, Right };
+        box1.anchor = { overlay::GetScreen(*stage), Center, overlay::Vec{ -5, 0 }, Right };
         box1.size = overlay::Vec{ 150, 150 };
 
-        box2.anchor = { overlay::screen(*stage), Center, overlay::Vec{ 5, 0 }, Left };
+        box2.anchor = { overlay::GetScreen(*stage), Center, overlay::Vec{ 5, 0 }, Left };
         box2.size = overlay::Vec{ 150, 150 };
 
-        box3.anchor = { overlay::screen(*stage), Center, overlay::Vec{ 0, -60 }, Bottom };
+        box3.anchor = { overlay::GetScreen(*stage), Center, overlay::Vec{ 0, -60 }, Bottom };
         box3.size = overlay::Vec{ 150, 150 };
 
         str.transparent_target = true;
-        str.align_top_to_line = true;
-        str.anchor.parent = overlay::screen(*stage);
+        str.alignTopToLine = true;
+        str.anchor.parent = overlay::GetScreen(*stage);
 
         loremFont.align = overlay::FontAlign::Justified;
         loremFont.stretch = overlay::FontStretch::Expanded;
         loremIpsum.transparent_target = true;
-        loremIpsum.anchor.parent = overlay::screen(*stage);
+        loremIpsum.anchor.parent = overlay::GetScreen(*stage);
 
-        icon.anchor.parent = overlay::screen(*stage);
+        icon.anchor.parent = overlay::GetScreen(*stage);
 
-        layer = overlay::layer(*stage, 0);
+        layer = overlay::CreateLayer(*stage, 0);
     }
 
     template<class Visit>
-    void traverse(Visit& visit)
+    void Traverse(Visit& visit)
     {
         visit(box1);
         visit(box2);
@@ -83,16 +83,16 @@ public:
         const overlay::Event& event;
 
         template<class Node>
-        void operator ()(Node& n) {
-            if (n.check_hit(*overlay::mouse_pos(event)))
+        void operator()(Node& n) {
+            if (n.check_hit(*overlay::GetMousePos(event)))
             {
                 app.beingDragged = &n;
-                overlay::focus(*app.layer);
+                overlay::Focus(*app.layer);
             }
         };
     };
 
-    void event(const overlay::Event& e)
+    void Event(const overlay::Event& e)
     {
         using namespace overlay::Events;
         using enum overlay::KeyCode;
@@ -100,28 +100,28 @@ public:
         switch (e.event)
         {
         break;case KeyPressed:
-            if (e.key() == KeyR)
+            if (e.GetKey() == KeyR)
             {
                 std::cout << "---------------------- Reset! ------------------";
-                overlay::update(*layer, *this, true);
+                overlay::Update(*layer, *this, true);
             }
-            else if (e.key() == MouseLButton)
+            else if (e.GetKey() == MouseLButton)
             {
                 auto visit = DragVisit(*this, e);
-                traverse(visit);
+                Traverse(visit);
             }
         break;case KeyReleased:
             beingDragged = nullptr;
-            overlay::update(*layer, *this, true);
+            overlay::Update(*layer, *this, true);
         break;case MouseMoved:
             if (beingDragged)
             {
-                beingDragged->anchor.offset += e.delta();
-                overlay::update(*layer, *this, true, true);
+                beingDragged->anchor.offset += e.GetDelta();
+                overlay::Update(*layer, *this, true, true);
             }
         break;case MouseLeave:
             beingDragged = nullptr;
-            overlay::update(*layer, *this, true, false);
+            overlay::Update(*layer, *this, true, false);
         }
     }
 };
@@ -130,5 +130,5 @@ int main()
 {
     auto stage = overlay::Stage();
     auto app = BoxDemo(&stage);
-    return overlay::run(stage, [&](auto& e) { app.event(e); });
+    return overlay::Run(stage, [&](auto& e) { app.Event(e); });
 }

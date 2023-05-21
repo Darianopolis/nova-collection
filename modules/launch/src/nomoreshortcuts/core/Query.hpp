@@ -25,18 +25,18 @@ enum class QueryAction
 class ResultItem
 {
 public:
-    virtual const std::filesystem::path& path() const = 0;
+    virtual const std::filesystem::path& GetPath() const = 0;
     virtual ~ResultItem() = default;
 };
 
 class ResultList
 {
 public:
-    virtual void query(QueryAction action, std::string_view query) = 0;
-    virtual std::unique_ptr<ResultItem> next(const ResultItem* item) = 0;
-    virtual std::unique_ptr<ResultItem> prev(const ResultItem* item) = 0;
-    virtual bool contains(const ResultItem& item) = 0;
-    virtual bool filter(const ResultItem& item) = 0;
+    virtual void Query(QueryAction action, std::string_view query) = 0;
+    virtual std::unique_ptr<ResultItem> Next(const ResultItem* item) = 0;
+    virtual std::unique_ptr<ResultItem> Prev(const ResultItem* item) = 0;
+    virtual bool Contains(const ResultItem& item) = 0;
+    virtual bool Filter(const ResultItem& item) = 0;
 
     virtual ~ResultList() = default;
 };
@@ -49,24 +49,24 @@ public:
     ResultListPriorityCollector()
     {}
 
-    void addList(ResultList* list)
+    void AddList(ResultList* list)
     {
         lists.push_back(list);
     }
 
-    void query(QueryAction action, std::string_view query) override
+    void Query(QueryAction action, std::string_view query) override
     {
         for (auto l : lists)
-            l->query(action, query);
+            l->Query(action, query);
     }
 
-    std::unique_ptr<ResultItem> next(const ResultItem* item)
+    std::unique_ptr<ResultItem> Next(const ResultItem* item)
     {
         if (!item)
         {
             for (auto l : lists)
             {
-                auto next = l->next(nullptr);
+                auto next = l->Next(nullptr);
                 if (next)
                     return next;
             }
@@ -75,15 +75,15 @@ public:
         for (int i = 0; i < lists.size(); ++i)
         {
             auto l = lists[i];
-            if (l->contains(*item))
+            if (l->Contains(*item))
             {
-                auto next = l->next(item);
+                auto next = l->Next(item);
                 if (!next)
                 {
                     if (i + 1 == lists.size())
                         return nullptr;
 
-                    return lists[i + 1]->next(nullptr);
+                    return lists[i + 1]->Next(nullptr);
                 }
                 return next;
             }
@@ -91,13 +91,13 @@ public:
         return nullptr;
     }
 
-    std::unique_ptr<ResultItem> prev(const ResultItem* item)
+    std::unique_ptr<ResultItem> Prev(const ResultItem* item)
     {
         if (!item) {
             // for (auto l : lists.reserve()) {
             for (auto l = lists.rbegin(); l != lists.rend(); l++)
             {
-                auto prev = (*l)->prev(nullptr);
+                auto prev = (*l)->Prev(nullptr);
                 if (prev)
                     return prev;
             }
@@ -106,15 +106,15 @@ public:
         for (int i = 0; i < lists.size(); ++i)
         {
             auto l = lists[i];
-            if (l->contains(*item))
+            if (l->Contains(*item))
             {
-                auto prev = l->prev(item);
+                auto prev = l->Prev(item);
                 if (!prev)
                 {
                     if (i == 0)
                         return nullptr;
 
-                    return lists[i - 1]->prev(nullptr);
+                    return lists[i - 1]->Prev(nullptr);
                 }
                 return prev;
             }
@@ -122,35 +122,35 @@ public:
         return nullptr;
     }
 
-    bool filter(const ResultItem& item)
+    bool Filter(const ResultItem& item)
     {
         for (auto l : lists)
         {
-            if (l->contains(item))
-                return l->filter(item);
+            if (l->Contains(item))
+                return l->Filter(item);
         }
         return false;
     }
 
-    bool contains(const ResultItem& item)
+    bool Contains(const ResultItem& item)
     {
         for (auto l : lists)
         {
-            if (l->contains(item))
+            if (l->Contains(item))
                 return true;
         }
         return false;
     }
 };
 
-static void sql(int rc, sqlite3* db)
+static void CheckSql(int rc, sqlite3* db)
 {
     if (rc && (rc != SQLITE_DONE && rc != SQLITE_ROW))
         throw std::exception(std::format("SQL error: {}\n", sqlite3_errmsg(db)).c_str());
 }
 
 static char* sql_errno;
-static void sql(int rc)
+static void CheckSql(int rc)
 {
     if (rc != SQLITE_OK && rc != SQLITE_DONE && rc != SQLITE_ROW)
     {
@@ -159,7 +159,7 @@ static void sql(int rc)
     }
 }
 
-static int emptyCallback(void*, int, char**, char**)
+static int EmptyCallback(void*, int, char**, char**)
 {
     return 0;
 }
@@ -167,21 +167,21 @@ static int emptyCallback(void*, int, char**, char**)
 class FavResultItem : public ResultItem
 {
 public:
-    FavResultItem(const std::filesystem::path& path)
-        : _path(path)
+    FavResultItem(const std::filesystem::path& _path)
+        : path(_path)
     {}
 
-    const std::filesystem::path& path() const override
+    const std::filesystem::path& GetPath() const override
     {
-        return _path;
+        return path;
     }
 
     bool operator==(const FavResultItem& other)
     {
-        return path() == other.path();
+        return GetPath() == other.GetPath();
     }
 private:
-    std::filesystem::path _path;
+    std::filesystem::path path;
 };
 
 // static const char* appDb = "C:\\Users\\Darian\\.nms\\app.db";
@@ -194,40 +194,40 @@ class FavResultList : public ResultList
     std::string appDb;
 
 public:
-    FavResultList(std::vector<std::string>* keywords)
-        : keywords(keywords)
+    FavResultList(std::vector<std::string>* _keywords)
+        : keywords(_keywords)
         , appDb(getenv("USERPROFILE") + std::string("\\.nms\\app.db"))
     {
-        create();
-        load();
+        Create();
+        Load();
         std::cout << " dir: " << appDb << '\n';
     }
 
-    void create()
+    void Create()
     {
-        sqlite3 *db{nullptr};
+        sqlite3* db{nullptr};
         ON_SCOPE_EXIT(&) {
             sqlite3_close(db);
         };
 
-        sql(sqlite3_open(appDb.c_str(), &db), db);
+        CheckSql(sqlite3_open(appDb.c_str(), &db), db);
 
-        sql(sqlite3_exec(db, "CREATE TABLE IF NOT EXISTS \"favourites\"("\
+        CheckSql(sqlite3_exec(db, "CREATE TABLE IF NOT EXISTS \"favourites\"("\
                     "\"path\" TEXT PRIMARY KEY,"\
-                    "\"uses\" INTEGER NOT NULL)", emptyCallback, nullptr, &sql_errno));
+                    "\"uses\" INTEGER NOT NULL)", EmptyCallback, nullptr, &sql_errno));
     }
 
-    void load()
+    void Load()
     {
-        sqlite3 *db{nullptr};
+        sqlite3* db{nullptr};
         ON_SCOPE_EXIT(&) {
             sqlite3_close(db);
         };
 
-        sql(sqlite3_open(appDb.c_str(), &db), db);
+        CheckSql(sqlite3_open(appDb.c_str(), &db), db);
 
         favourites.clear();
-        sql(sqlite3_exec(
+        CheckSql(sqlite3_exec(
                 db,
                 "SELECT path FROM favourites ORDER BY uses DESC",
                 [](void* list, int, char** val, char**) {
@@ -240,10 +240,10 @@ public:
                 &sql_errno));
     }
 
-    void incrementUses(const std::filesystem::path& path, bool reload = true)
+    void IncrementUses(const std::filesystem::path& path, bool reload = true)
     {
-        sqlite3 *db{nullptr};
-        sqlite3_stmt *stmt{nullptr};
+        sqlite3* db{nullptr};
+        sqlite3_stmt* stmt{nullptr};
         ON_SCOPE_FAILURE(&) {
             sqlite3_finalize(stmt);
             sqlite3_close(db);
@@ -251,28 +251,28 @@ public:
 
         std::string str = path.string();
 
-        sql(sqlite3_open(appDb.c_str(), &db), db);
+        CheckSql(sqlite3_open(appDb.c_str(), &db), db);
 
-        sql(sqlite3_prepare_v2(db, "INSERT OR IGNORE INTO favourites(path, uses) VALUES (?, 0);", -1, &stmt, nullptr), db);
-        sql(sqlite3_bind_text(stmt, 1, str.c_str(), str.size(), SQLITE_TRANSIENT), db);
-        sql(sqlite3_step(stmt), db);
-        sql(sqlite3_finalize(stmt), db);
+        CheckSql(sqlite3_prepare_v2(db, "INSERT OR IGNORE INTO favourites(path, uses) VALUES (?, 0);", -1, &stmt, nullptr), db);
+        CheckSql(sqlite3_bind_text(stmt, 1, str.c_str(), str.size(), SQLITE_TRANSIENT), db);
+        CheckSql(sqlite3_step(stmt), db);
+        CheckSql(sqlite3_finalize(stmt), db);
 
-        sql(sqlite3_prepare_v2(db, "UPDATE favourites SET uses = uses + 1 WHERE path = ?", -1, &stmt, nullptr), db);
-        sql(sqlite3_bind_text(stmt, 1, str.c_str(), str.size(), SQLITE_TRANSIENT), db);
-        sql(sqlite3_step(stmt), db);
+        CheckSql(sqlite3_prepare_v2(db, "UPDATE favourites SET uses = uses + 1 WHERE path = ?", -1, &stmt, nullptr), db);
+        CheckSql(sqlite3_bind_text(stmt, 1, str.c_str(), str.size(), SQLITE_TRANSIENT), db);
+        CheckSql(sqlite3_step(stmt), db);
 
         sqlite3_finalize(stmt);
         sqlite3_close(db);
 
         if (reload)
-            load();
+            Load();
     }
 
-    void resetUses(const std::filesystem::path& path, bool reload = true)
+    void ResetUses(const std::filesystem::path& path, bool reload = true)
     {
-        sqlite3 *db{nullptr};
-        sqlite3_stmt *stmt{nullptr};
+        sqlite3* db{nullptr};
+        sqlite3_stmt* stmt{nullptr};
         ON_SCOPE_FAILURE(&) {
             sqlite3_finalize(stmt);
             sqlite3_close(db);
@@ -280,22 +280,22 @@ public:
 
         std::string str = path.string();
 
-        sql(sqlite3_open(appDb.c_str(), &db), db);
+        CheckSql(sqlite3_open(appDb.c_str(), &db), db);
 
-        sql(sqlite3_prepare_v2(db, "DELETE FROM favourites WHERE path = ?", -1, &stmt, nullptr), db);
-        sql(sqlite3_bind_text(stmt, 1, str.c_str(), str.size(), SQLITE_TRANSIENT), db);
-        sql(sqlite3_step(stmt), db);
+        CheckSql(sqlite3_prepare_v2(db, "DELETE FROM favourites WHERE path = ?", -1, &stmt, nullptr), db);
+        CheckSql(sqlite3_bind_text(stmt, 1, str.c_str(), str.size(), SQLITE_TRANSIENT), db);
+        CheckSql(sqlite3_step(stmt), db);
 
         sqlite3_finalize(stmt);
         sqlite3_close(db);
         if (reload)
-            load();
+            Load();
     }
 
-    void query(QueryAction action, std::string_view query) final
+    void Query(QueryAction action, std::string_view query) final
     {}
 
-    bool filter(const std::filesystem::path& path)
+    bool Filter(const std::filesystem::path& path)
     {
         std::string str = path.string();
         for (auto& keyword : *keywords)
@@ -313,13 +313,13 @@ public:
         return true;
     }
 
-    std::unique_ptr<ResultItem> next(const ResultItem* item) final
+    std::unique_ptr<ResultItem> Next(const ResultItem* item) final
     {
         auto i = favourites.begin();
         if (item)
         {
             // TODO This should just compare for direct equality
-            while (i != favourites.end() && (*i)->path() != item->path())
+            while (i != favourites.end() && (*i)->GetPath() != item->GetPath())
                 i++;
 
             if (i == favourites.end())
@@ -327,21 +327,21 @@ public:
             i++;
         }
 
-        while (i != favourites.end() && !filter((*i)->path()))
+        while (i != favourites.end() && !Filter((*i)->GetPath()))
             i++;
 
         return i != favourites.end()
-            ? std::make_unique<FavResultItem>((*i)->path())
+            ? std::make_unique<FavResultItem>((*i)->GetPath())
             : nullptr;
     }
 
-    std::unique_ptr<ResultItem> prev(const ResultItem* item) final
+    std::unique_ptr<ResultItem> Prev(const ResultItem* item) final
     {
         auto i = favourites.rbegin();
         if (item)
         {
             // TODO This should just compare for direct equality
-            while (i != favourites.rend() && (*i)->path() != item->path())
+            while (i != favourites.rend() && (*i)->GetPath() != item->GetPath())
                 i++;
 
             if (i == favourites.rend())
@@ -349,29 +349,29 @@ public:
             i++;
         }
 
-        while (i != favourites.rend() && !filter((*i)->path()))
+        while (i != favourites.rend() && !Filter((*i)->GetPath()))
             i++;
 
         return i != favourites.rend()
-            ? std::make_unique<FavResultItem>((*i)->path())
+            ? std::make_unique<FavResultItem>((*i)->GetPath())
             : nullptr;
     }
 
-    bool filter(const ResultItem& item) final
+    bool Filter(const ResultItem& item) final
     {
         auto fav = dynamic_cast<const FavResultItem*>(&item);
-        return fav && filter(fav->path());
+        return fav && Filter(fav->GetPath());
     }
 
-    bool contains(const ResultItem& item) final
+    bool Contains(const ResultItem& item) final
     {
         return dynamic_cast<const FavResultItem*>(&item) != nullptr;
     }
 
-    bool containsPath(const std::filesystem::path& path)
+    bool ContainsPath(const std::filesystem::path& path)
     {
         return std::ranges::find_if(favourites, [&](auto& item) {
-            return item->path() == path;
+            return item->GetPath() == path;
         }) != favourites.end();
     }
 };
@@ -383,16 +383,19 @@ class FileResultItem : public ResultItem
     friend class FileResultList;
 
     size_t index;
-    std::filesystem::path _path;
+    std::filesystem::path path;
 public:
-    FileResultItem(std::filesystem::path&& path, size_t index)
+    FileResultItem(std::filesystem::path&& _path, size_t index)
         : index(index)
-        , _path(path)
-    {}
-
-    virtual const std::filesystem::path& path() const override
+        , path(_path)
     {
-        return _path;
+        const char* a[] = { "aa", "bb" };
+        std::size(a);
+    }
+
+    virtual const std::filesystem::path& GetPath() const override
+    {
+        return path;
     }
 };
 
@@ -409,15 +412,15 @@ public:
     FileResultList(FavResultList* favourites)
         : favourites(favourites)
         , match_bits(0)
-        , collator(UnicodeCollator::new_ascii_collator())
+        , collator(UnicodeCollator::NewAsciiCollator())
     {
         using namespace std::chrono;
 
         auto start = steady_clock::now();
         {
             std::vector<std::unique_ptr<Node>> roots;
-            auto *c = Node::load(getenv("USERPROFILE") + std::string("\\.nms\\C.index"));
-            auto *d = Node::load(getenv("USERPROFILE") + std::string("\\.nms\\D.index"));
+            auto* c = Node::Load(getenv("USERPROFILE") + std::string("\\.nms\\C.index"));
+            auto* d = Node::Load(getenv("USERPROFILE") + std::string("\\.nms\\D.index"));
             if (c) roots.emplace_back(c);
             if (d) roots.emplace_back(d);
             std::cout << "Loaded nodes in " << duration_cast<milliseconds>(steady_clock::now() - start) << '\n';
@@ -425,15 +428,15 @@ public:
             start = steady_clock::now();
             std::vector<NodeView> flat;
             for (auto &root : roots)
-                root->for_each([&](auto& n) { flat.emplace_back(&n); });
+                root->ForEach([&](auto& n) { flat.emplace_back(&n); });
 
             std::sort(std::execution::par_unseq, flat.begin(), flat.end(), [](auto& l, auto& r) {
-                return Node::cmp_depth_len_lex(*l.node, *r.node) == std::weak_ordering::less;
+                return Node::CompareDepthLenLex(*l.node, *r.node) == std::weak_ordering::less;
             });
             std::cout << "Sorted nodes in " << duration_cast<milliseconds>(steady_clock::now() - start) << '\n';
 
             start = steady_clock::now();
-            index = flatten(flat);
+            index = Flatten(flat);
             std::cout << "Flattened nodes in " << duration_cast<milliseconds>(steady_clock::now() - start) << '\n';
 
             start = steady_clock::now();
@@ -441,7 +444,7 @@ public:
         std::cout << "Destroyed temporary nodes in " << duration_cast<milliseconds>(steady_clock::now() - start) << '\n';
     }
 
-    void filter(uint8_t matchBit, std::string_view keyword, bool lazy)
+    void Filter(uint8_t matchBit, std::string_view keyword, bool lazy)
     {
         std::cout << "refiltering on keyword, [" << keyword << "] lazy = " << lazy << '\n';
         // std::cout << std::format("    match bit = {:08b}\n", matchBit);
@@ -458,8 +461,8 @@ public:
             std::for_each(std::execution::par_unseq, index.nodes.begin(), index.nodes.end(), [&](auto& view) {
                 if ((view.match & matchBit) == matchBit)
                 {
-                    std::string_view haystack { &index.str[view.str_offset], view.len };
-                    if (!collator->fuzzy_find(haystack, needle))
+                    std::string_view haystack { &index.str[view.strOffset], view.len };
+                    if (!collator->FuzzyFind(haystack, needle))
                         view.match &= ~matchBit;
                 }
             });
@@ -467,8 +470,8 @@ public:
         else
         {
             std::for_each(std::execution::par_unseq, index.nodes.begin(), index.nodes.end(), [&](auto& view) {
-                std::string_view haystack { &index.str[view.str_offset], view.len };
-                view.match = collator->fuzzy_find(haystack, needle)
+                std::string_view haystack { &index.str[view.strOffset], view.len };
+                view.match = collator->FuzzyFind(haystack, needle)
                     ? view.match | matchBit
                     : view.match & ~matchBit;
             });
@@ -479,8 +482,8 @@ public:
         for (auto& n : index.nodes)
         {
             auto& parent = index.nodes[n.parent];
-            n.inherited_match = (parent.str_offset != n.str_offset)
-                ? parent.inherited_match | n.match : n.match;
+            n.inheritedMatch = (parent.strOffset != n.strOffset)
+                ? parent.inheritedMatch | n.match : n.match;
         }
         auto end = steady_clock::now();
         std::cout << "  propogated in " << duration_cast<milliseconds>(end - start2) << '\n';
@@ -492,19 +495,19 @@ public:
         // std::cout << "total = " << total << '\n';
     }
 
-    std::string make_str(uint32_t i)
+    std::string MakeString(uint32_t i)
     {
         auto &node = index.nodes[i];
         if (node.parent == i)
-            return std::string{&index.str[node.str_offset], node.len};
-        std::string parent_str = make_str(node.parent);
+            return std::string{&index.str[node.strOffset], node.len};
+        std::string parent_str = MakeString(node.parent);
         if (!parent_str.ends_with('\\'))
             parent_str += '\\';
-        parent_str.append(&index.str[node.str_offset], node.len);
+        parent_str.append(&index.str[node.strOffset], node.len);
         return std::move(parent_str);
     }
 
-    void query(QueryAction action, std::string_view _query)
+    void Query(QueryAction action, std::string_view _query)
     {
         // std::cout << std::format("before query, match bits = {:08b}\n", match_bits);
         auto query = std::string(_query);
@@ -527,16 +530,16 @@ public:
                 // std::cout << "Adding new keyword [" << new_keywords[i] << "]\n";
                 std::for_each(std::execution::par_unseq, index.nodes.begin(), index.nodes.end(), [&](NodeFlat& p) {
                     p.match |= matchBit;
-                    p.inherited_match &= ~matchBit;
+                    p.inheritedMatch &= ~matchBit;
                 });
                 match_bits |= matchBit;
-                filter(matchBit, new_keywords[i], false);
+                Filter(matchBit, new_keywords[i], false);
             }
             else if (keywords[i] != new_keywords[i])
             {
                 // Keyword change, refilter match column
                 // Memoized - Do a lazy match if new keyword contains the previous key
-                filter(matchBit, new_keywords[i], new_keywords[i].find(keywords[i]) != std::string::npos);
+                Filter(matchBit, new_keywords[i], new_keywords[i].find(keywords[i]) != std::string::npos);
             }
         }
 
@@ -547,7 +550,7 @@ public:
             // std::cout << "Clearing old keyword [" << keywords[i] << "]\n";
             std::for_each(std::execution::par_unseq, index.nodes.begin(), index.nodes.end(), [&](NodeFlat& p) {
                 p.match &= ~matchBit;
-                p.inherited_match &= ~matchBit;
+                p.inheritedMatch &= ~matchBit;
             });
             match_bits &= ~matchBit;
         }
@@ -556,18 +559,18 @@ public:
         // std::cout << std::format("  After query, match bits = {:08b}\n", match_bits);
     }
 
-    std::unique_ptr<ResultItem> next(const ResultItem* item) override
+    std::unique_ptr<ResultItem> Next(const ResultItem* item) override
     {
-        auto *current = dynamic_cast<const FileResultItem*>(item);
+        auto* current = dynamic_cast<const FileResultItem*>(item);
         size_t i = current ? current->index + 1 : 0;
         while (i < index.nodes.size())
         {
             auto &node = index.nodes[i];
-            if (((node.match | node.inherited_match) & match_bits) == match_bits)
+            if (((node.match | node.inheritedMatch) & match_bits) == match_bits)
             {
                 // auto path = std::filesystem::path(flat[i].node->string());
-                auto path = std::filesystem::path(make_str(i));
-                if (!favourites->containsPath(path))
+                auto path = std::filesystem::path(MakeString(i));
+                if (!favourites->ContainsPath(path))
                     return std::make_unique<FileResultItem>(std::move(path), i);
             }
             i++;
@@ -575,17 +578,17 @@ public:
         return nullptr;
     }
 
-    std::unique_ptr<ResultItem> prev(const ResultItem* item) override
+    std::unique_ptr<ResultItem> Prev(const ResultItem* item) override
     {
-        auto *current = dynamic_cast<const FileResultItem*>(item);
+        auto* current = dynamic_cast<const FileResultItem*>(item);
         size_t i = current ? current->index - 1 : index.nodes.size() - 1;
         while (i != -1)
         {
             auto &node = index.nodes[i];
-            if (((node.match | node.inherited_match) & match_bits) == match_bits)
+            if (((node.match | node.inheritedMatch) & match_bits) == match_bits)
             {
-                auto path = std::filesystem::path(make_str(i));
-                if (!favourites->containsPath(path))
+                auto path = std::filesystem::path(MakeString(i));
+                if (!favourites->ContainsPath(path))
                     return std::make_unique<FileResultItem>(std::move(path), i);
             }
             i--;
@@ -593,17 +596,17 @@ public:
         return nullptr;
     };
 
-    bool contains(const ResultItem& item) override
+    bool Contains(const ResultItem& item) override
     {
         return dynamic_cast<const FileResultItem*>(&item);
     }
 
-    bool filter(const ResultItem& item) override
+    bool Filter(const ResultItem& item) override
     {
-        auto *current = dynamic_cast<const FileResultItem*>(&item);
+        auto* current = dynamic_cast<const FileResultItem*>(&item);
         if (!current)
             return false;
         auto& node = index.nodes[current->index];
-        return ((node.match | node.inherited_match) & match_bits) == match_bits;
+        return ((node.match | node.inheritedMatch) & match_bits) == match_bits;
     }
 };

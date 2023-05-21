@@ -52,19 +52,19 @@ namespace overlay
         // std::unordered_map<std::string, CachedIcon> icons;
         std::unordered_map<std::string, std::shared_ptr<IconFuture>> icons;
         size_t version;
-        ID2D1DCRenderTarget *render_target;
-        Stage *stage{nullptr};
-        bool block_wait{true};
+        ID2D1DCRenderTarget* renderTarget = nullptr;
+        Stage* stage = nullptr;
+        bool blockWait = true;
 
-        std::thread worker();
+        std::thread Worker();
     public:
         HWND hWnd;
 
         IconLoader();
         ~IconLoader();
-        std::shared_ptr<IconFuture> load(std::string path, bool silent = false);
-        void newFrame(Frame& frame);
-        void clear();
+        std::shared_ptr<IconFuture> Load(std::string path, bool silent = false);
+        void NewFrame(Frame& frame);
+        void Clear();
     };
 
     // ------------- //
@@ -73,12 +73,12 @@ namespace overlay
 
     struct Layer
     {
-        Stage *stage;
+        Stage* stage;
         HWND hWnd;
         Rect bounds;
 
-        void hide();
-        void focus();
+        void Hide();
+        void Focus();
     };
 
     // ------------- //
@@ -88,48 +88,48 @@ namespace overlay
     struct Frame
     {
         size_t version;
-        ID2D1DCRenderTarget* render_target;
+        ID2D1DCRenderTarget* renderTarget;
         HDC hdc;
-        Vec screen_pos;
-        Layer *layer;
-        Stage *stage;
+        Vec screenPos;
+        Layer* layer;
+        Stage* stage;
 
         bool sticky;
         Rect bounds;
         RECT rect;
-        HDC hdc_screen;
+        HDC hdcScreen;
         HBITMAP bitmap;
-        HBITMAP bitmap_old;
+        HBITMAP bitmapOld;
 
-        bool drawing{false};
+        bool drawing = false;
 
-        Frame(Layer *layer, bool sticky, Rect bounds);
+        Frame(Layer* layer, bool sticky, Rect bounds);
         ~Frame();
 
-        bool canDraw();
-        void push();
+        bool CanDraw();
+        void Push();
 
-        void box(
+        void Box(
             const Node& node,
             Color bg);
 
-        void box(
+        void Box(
             const Node& node,
             Color bg,
             Color border,
-            float border_width);
+            float borderWidth);
 
-        void box(
+        void Box(
             const Node& node,
             Color bg,
-            float corner_radius);
+            float cornerRadius);
 
-        void box(
+        void Box(
             const Node& node,
             Color bg,
             Color border,
-            float border_width,
-            float corner_radius);
+            float borderWidth,
+            float cornerRadius);
     };
 
     // ------------- //
@@ -143,53 +143,54 @@ namespace overlay
         ComPtr<IDWriteFactory> dwrite;
         ComPtr<IWICImagingFactory> wic;
 
-        TRACKMOUSEEVENT mouse_track;
+        TRACKMOUSEEVENT mouseTrack;
         HINSTANCE instance{nullptr};
         std::vector<std::unique_ptr<Layer>> layers;
         std::optional<Vec> mouse_pos;
 
-        size_t render_target_version{0};
-        ComPtr<ID2D1DCRenderTarget> render_target;
+        size_t renderTargetVersion = 0;
+        ComPtr<ID2D1DCRenderTarget> renderTarget;
         ComPtr<ID2D1SolidColorBrush> brush;
 
         Node screen;
 
         GUID guid;
         HICON icon;
-        IconLoader icon_loader;
+        IconLoader iconLoader;
 
-        std::function<void(const Event&)> event_handler;
+        std::function<void(const Event&)> eventHandler;
 
-        size_t next_uid{1};
+        size_t nextUID = 1;
 
-        bool debug{false};
+        bool debug = false;
 
         static LRESULT __stdcall WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
         LRESULT HandleMessage(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
         Stage();
         ~Stage();
-        void initDirectX();
-        int initWin32();
-        int createWindow();
-        void updateScreens();
-        void createTrayIcon(std::string_view tooltip);
+        void InitDirectX();
+        int InitWin32();
+        int MakeWindow();
+        void UpdateScreens();
+        void CreateTrayIcon(std::string_view tooltip);
 
-        size_t getUID();
+        size_t GetUID();
 
-        bool bindDC(HDC hdc, RECT &rc);
+        bool BindDC(HDC hdc, RECT &rc);
 
-        Layer* layer(int id)
+        Layer* GetLayer(int id)
         {
             return layers[id].get();
         }
 
-        int run(std::function<void(const Event&)> event_handler);
-        void quit(int);
+        int Run(std::function<void(const Event&)> eventHandler);
+        void Quit(int);
 
-        void sendEvent(Event&& event)
+        void SendEvent(Event&& event)
         {
-            if (event_handler) event_handler(event);
+            if (eventHandler)
+                eventHandler(event);
         }
     };
 

@@ -35,17 +35,17 @@ class PathView
 {
     friend PathTree;
 
-    std::filesystem::path _path;
+    std::filesystem::path path;
     uint32_t index;
 
-    PathView(std::filesystem::path path, uint32_t index)
-        : _path(path)
-        , index(index) {
+    PathView(std::filesystem::path _path, uint32_t _index)
+        : path(_path)
+        , index(_index) {
     }
 public:
 
-    const std::filesystem::path& path() const {
-        return _path;
+    const std::filesystem::path& GetPath() const {
+        return path;
     }
 };
 
@@ -76,23 +76,23 @@ public:
      * @param data
      * @param nodes
      */
-    PathTree(std::string data, std::vector<PathNode> nodes)
-        : data(data)
-        , nodes(nodes)
+    PathTree(std::string _data, std::vector<PathNode> _nodes)
+        : data(_data)
+        , nodes(_nodes)
     {
-        view = { data.begin(), data.end() };
+        view = { _data.begin(), _data.end() };
     }
 
     ///////////////////////////
     // String representation //
     ///////////////////////////
 
-    std::string nodePath(const PathNode& node) const
+    std::string NodePath(const PathNode& node) const
     {
         return data.substr(node.strBegin, node.len);
     }
 
-    std::string fullPath(const PathNode& node, bool dir = false) const
+    std::string FullPath(const PathNode& node, bool dir = false) const
     {
         const PathNode& parent = nodes[node.parent];
         std::string nodeStr = data.substr(node.strBegin, node.len);
@@ -100,7 +100,7 @@ public:
             nodeStr += '\\';
 
         return (parent.strBegin != node.strBegin)
-            ? fullPath(parent, true) + nodeStr
+            ? FullPath(parent, true) + nodeStr
             : nodeStr;
     }
 
@@ -108,14 +108,14 @@ public:
     // Comparison and sorting //
     ////////////////////////////
 
-    std::partial_ordering compareNames(const PathNode& p1, const PathNode& p2) const
+    std::partial_ordering CompareNames(const PathNode& p1, const PathNode& p2) const
     {
         return p1.len != p2.len
             ? (p1.len < p2.len ? std::partial_ordering::less : std::partial_ordering::greater)
             : view.substr(p1.strBegin, p1.len) <=> view.substr(p2.strBegin, p2.len);
     }
 
-    std::partial_ordering comparePaths(const PathNode& p1, const PathNode& p2) const
+    std::partial_ordering ComparePaths(const PathNode& p1, const PathNode& p2) const
     {
         if (p1.depth != p2.depth)
         {
@@ -129,23 +129,23 @@ public:
         }
         else if (p1.depth == 0)
         {
-            return compareNames(p1, p2);
+            return CompareNames(p1, p2);
         }
         else
         {
-            std::partial_ordering order = comparePaths(nodes[p1.parent], nodes[p2.parent]);
+            std::partial_ordering order = ComparePaths(nodes[p1.parent], nodes[p2.parent]);
             return order == std::partial_ordering::equivalent
-                ? compareNames(p1, p2)
+                ? CompareNames(p1, p2)
                 : order;
         }
     }
 
-    bool comparePathsLess(const PathNode& p1, const PathNode& p2) const
+    bool ComparePathsLess(const PathNode& p1, const PathNode& p2) const
     {
-        return comparePaths(p1, p2) == std::partial_ordering::less;
+        return ComparePaths(p1, p2) == std::partial_ordering::less;
     }
 
-    void sort()
+    void Sort()
     {
         // Fix view
         view = { data.begin(), data.end() };
@@ -153,40 +153,40 @@ public:
 
         // Create a temporary structure to remember the old index after sorting.
         struct SortNode {
-            uint32_t old_index;
+            uint32_t oldIndex;
             PathNode node;
         };
-        std::vector<SortNode> to_sort(size);
+        std::vector<SortNode> toSort(size);
 
 #pragma omp parallel for
         for (long i = 0; i < size; ++i)
         {
-            to_sort[i] = { static_cast<uint32_t>(i), nodes[i] };
+            toSort[i] = { static_cast<uint32_t>(i), nodes[i] };
         }
 
         // Sort temporary
         std::sort(
             std::execution::par,
-            to_sort.begin(), to_sort.end(),
+            toSort.begin(), toSort.end(),
             [&](const SortNode& p1, const SortNode& p2) {
-                return comparePathsLess(p1.node, p2.node);
+                return ComparePathsLess(p1.node, p2.node);
             });
 
         // Compute mapping of old indexes to new indexes
-        std::vector<uint32_t> old_to_new_indexes(size);
+        std::vector<uint32_t> indexRemap(size);
 #pragma omp parallel for
         for (long i = 0; i < size; ++i)
         {
-            old_to_new_indexes[to_sort[i].old_index] = i;
+            indexRemap[toSort[i].oldIndex] = i;
         }
 
         // Copy nodes back into permanent structure, with correct parent indexes
 #pragma omp parallel for
         for (long i = 0; i < size; ++i)
         {
-            PathNode& node = to_sort[i].node;
+            PathNode& node = toSort[i].node;
             nodes[i] = node;
-            nodes[i].parent = old_to_new_indexes[node.parent];
+            nodes[i].parent = indexRemap[node.parent];
         }
     }
 
@@ -194,7 +194,7 @@ public:
     // Iteration and navigation //
     //////////////////////////////
 
-    std::optional<PathView> makePathViewForNode(const PathNode& node, uint32_t index) const
+    std::optional<PathView> MakePathViewForNode(const PathNode& node, uint32_t index) const
     {
         std::vector<const PathNode*> parents{};
         parents.push_back(&node);
@@ -209,9 +209,9 @@ public:
         try
         {
             int i = parents.size() - 1;
-            std::filesystem::path path = nodePath(*parents[i--]);
+            std::filesystem::path path = NodePath(*parents[i--]);
             while (i >= 0)
-                path /= nodePath(*parents[i--]);
+                path /= NodePath(*parents[i--]);
 
             return PathView { std::move(path), index };
         }
@@ -220,16 +220,16 @@ public:
         return std::nullopt;
     }
 
-    std::optional<PathView> next(const PathView* current)
+    std::optional<PathView> Next(const PathView* current)
     {
         int64_t i = current ? current->index + 1 : 0;
         size_t max = nodes.size();
 
         while (i < max)
         {
-            if (checkMatch(nodes[i], matchBits, useInheritMatch))
+            if (CheckMatch(nodes[i], matchBits, useInheritMatch))
             {
-                auto path = makePathViewForNode(nodes[i], i);
+                auto path = MakePathViewForNode(nodes[i], i);
                 if (path)
                     return path;
             }
@@ -239,15 +239,15 @@ public:
         return std::nullopt;
     }
 
-    std::optional<PathView> prev(const PathView* current)
+    std::optional<PathView> Prev(const PathView* current)
     {
         int64_t i = current ? current->index : nodes.size();
         i--;
         while (i >= 0)
         {
-            if (checkMatch(nodes[i], matchBits, useInheritMatch))
+            if (CheckMatch(nodes[i], matchBits, useInheritMatch))
             {
-                auto path = makePathViewForNode(nodes[i], i);
+                auto path = MakePathViewForNode(nodes[i], i);
                 if (path)
                     return path;
             }
@@ -261,12 +261,12 @@ public:
     // Filtering and Matching //
     ////////////////////////////
 
-    bool filter(const PathView& item)
+    bool Filter(const PathView& item)
     {
-        return checkMatch(nodes[item.index], matchBits, useInheritMatch);
+        return CheckMatch(nodes[item.index], matchBits, useInheritMatch);
     }
 
-    void setMatchBits(uint8_t mask, uint8_t value, uint8_t iMask, uint8_t iValue)
+    void SetMatchBits(uint8_t mask, uint8_t value, uint8_t iMask, uint8_t iValue)
     {
         std::for_each(std::execution::par_unseq, nodes.begin(), nodes.end(), [&](PathNode& p) {
             p.match = (p.match & ~mask) | value;
@@ -274,7 +274,7 @@ public:
         });
     }
 
-    void matchLazy(uint8_t matchCheck, uint8_t matchBit, std::function<bool(std::string_view)>&& test)
+    void MatchLazy(uint8_t matchCheck, uint8_t matchBit, std::function<bool(std::string_view)>&& test)
     {
         view = { data.begin(), data.end() };
         std::for_each(std::execution::par_unseq, nodes.begin(), nodes.end(), [&](PathNode& p) {
@@ -291,7 +291,7 @@ public:
         });
     }
 
-    void match(uint8_t matchBit, std::function<bool(std::string_view)>&& test)
+    void Match(uint8_t matchBit, std::function<bool(std::string_view)>&& test)
     {
         view = { data.begin(), data.end() };
         std::for_each(std::execution::par_unseq, nodes.begin(), nodes.end(), [&](PathNode& p) {
@@ -302,7 +302,7 @@ public:
     }
 
     template<typename Iter>
-    std::optional<PathView> matchComplete(const uint8_t match_bit, Iter iter, Iter last)
+    std::optional<PathView> MatchComplete(const uint8_t match_bit, Iter iter, Iter last)
     {
         const std::string_view view = { data.begin(), data.end() };
 
@@ -323,7 +323,7 @@ public:
             if (view.substr(p.strBegin, p.len) == *iter)
             {
                 // Found first element in path
-                std::cout << std::format("Found first [{}] @ {}\n", *iter, fullPath(p));
+                std::cout << std::format("Found first [{}] @ {}\n", *iter, FullPath(p));
                 parent = i;
                 iter++;
                 if (iter == last)
@@ -331,7 +331,7 @@ public:
                     //  Found only element in path
                     p.match = 1;
                     // return PathView { this, nodes[i], static_cast<uint32_t>(i) };
-                    return makePathViewForNode(nodes[i], i);
+                    return MakePathViewForNode(nodes[i], i);
                 }
                 i++;
                 break;
@@ -350,7 +350,7 @@ public:
             if (parent == p.parent && view.substr(p.strBegin, p.len) == *iter)
             {
                 //  Found next element in path
-                std::cout << std::format("Found [{}] @ {}\n", *iter, fullPath(p));
+                std::cout << std::format("Found [{}] @ {}\n", *iter, FullPath(p));
                 parent = i;
                 iter++;
                 if (iter == last)
@@ -358,7 +358,7 @@ public:
                     //  Found final element in path
                     p.match = 1;
                     // return PathView { this, nodes[i], static_cast<uint32_t>(i) };
-                    return makePathViewForNode(nodes[i], i);
+                    return MakePathViewForNode(nodes[i], i);
                 }
                 // match = (*iter).string();
             }
@@ -370,7 +370,7 @@ public:
         return std::nullopt;
     }
 
-    void propogateMatches(const bool inheritanceChannel)
+    void PropogateMatches(const bool inheritanceChannel)
     {
         if (inheritanceChannel)
         {
@@ -390,7 +390,7 @@ public:
         }
     }
 
-    bool checkMatch(const PathNode& p, uint8_t matchBits, bool includeInherited)
+    bool CheckMatch(const PathNode& p, uint8_t matchBits, bool includeInherited)
     {
         return ((includeInherited ? (p.match | p.inheritedMatch) : p.match) & matchBits) == matchBits;
     }
@@ -399,7 +399,7 @@ public:
     // Serialization and Deserialization //
     ///////////////////////////////////////
 
-    static PathTree load(const std::filesystem::path& file)
+    static PathTree Load(const std::filesystem::path& file)
     {
         std::ifstream in(file, std::ios::in | std::ios::binary);
         if (in)
@@ -426,7 +426,7 @@ public:
         return PathTree("", std::vector<PathNode>(0));
     }
 
-    void save(const std::filesystem::path& file) {
+    void Save(const std::filesystem::path& file) {
         std::ofstream out(file, std::ios::out | std::ios::binary);
         if (out)
         {
@@ -439,13 +439,13 @@ public:
         }
     }
 
-    void compare_lengths() {
-        std::unordered_map<uint32_t, uint32_t> len_counts;
+    void CompareLengths() {
+        std::unordered_map<uint32_t, uint32_t> lenCounts;
         for (auto& n : nodes)
-            len_counts[n.len]++;
+            lenCounts[n.len]++;
 
         std::vector<std::pair<uint32_t, uint32_t>> results;
-        for (auto& p : len_counts)
+        for (auto& p : lenCounts)
             results.push_back(p);
 
         std::sort(results.begin(), results.end(), [](auto& l, auto& r) { return l.second >= r.second; });
@@ -472,7 +472,7 @@ public:
         }
     };
 
-    void build_fulltree()
+    void BuildFullTree()
     {
         std::vector<std::unique_ptr<TreeNode>> roots;
         std::unordered_map<uint32_t, TreeNode*> graph;
@@ -511,12 +511,12 @@ public:
         std::cout << "num roots = " << roots.size() << '\n';
         std::cout << "count = " << sorted.size() << '\n';
 
-        size_t total_size = 0;
+        size_t totalSize = 0;
         for (auto& root : roots)
-            total_size += root->size();
-        total_size += 8 * sorted.size();
+            totalSize += root->size();
+        totalSize += 8 * sorted.size();
 
-        std::cout << "Used bytes = " << total_size << " (MB = " << (total_size / (1024 * 1024)) << ")\n";
+        std::cout << "Used bytes = " << totalSize << " (MB = " << (totalSize / (1024 * 1024)) << ")\n";
     }
 
     //////////////////////
@@ -524,7 +524,7 @@ public:
     //////////////////////
 
     template<typename Roots>
-    static PathTree index(const Roots& roots, PathTree* prev = nullptr)
+    static PathTree Index(const Roots& roots, PathTree* prev = nullptr)
     {
         std::unordered_map<std::string, int> elements;
         std::string data;
@@ -534,7 +534,7 @@ public:
         {
             prev->view = { prev->data.begin(), prev->data.end() };
 
-            prev->setMatchBits(0xFFc, 0, 0xFFc, 0);
+            prev->SetMatchBits(0xFFc, 0, 0xFFc, 0);
             for (const auto& root : roots)
             {
                 std::vector<std::string> components;
@@ -550,29 +550,29 @@ public:
                     components.push_back(std::move(s));
                 }
 
-                prev->matchComplete(1, components.begin(), components.end());
+                prev->MatchComplete(1, components.begin(), components.end());
             }
-            prev->propogateMatches(true);
+            prev->PropogateMatches(true);
 
             auto preserved = 0ull;
             auto dropped = 0ull;
 
             for (auto& n : prev->nodes)
             {
-                if (!prev->checkMatch(n, 1, true))
+                if (!prev->CheckMatch(n, 1, true))
                 {
                     preserved++;
-                    auto parent_str = prev->fullPath(n, false);
+                    auto parentStr = prev->FullPath(n, false);
                     std::string name { prev->view.substr(n.strBegin, n.len) };
-                    uint32_t str_offset = data.size();
+                    uint32_t strOffset = data.size();
                     data.append(name);
 
                     auto index = nodes.size();
-                    auto search = elements.find(parent_str);
+                    auto search = elements.find(parentStr);
                     uint32_t parent = search == elements.end() ? index : search->second;
 
                     nodes.push_back(PathNode {
-                        str_offset,
+                        strOffset,
                         parent,
                         static_cast<uint8_t>(name.size()),
                         0,

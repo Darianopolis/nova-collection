@@ -139,7 +139,7 @@ namespace overlay
 
     struct IconCache
     {
-        std::shared_ptr<IconFuture> icon_future;
+        std::shared_ptr<IconFuture> iconFuture;
 
         void operator=(nullptr_t);
 

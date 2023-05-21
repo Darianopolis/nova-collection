@@ -8,8 +8,8 @@ static auto engine = std::default_random_engine();
 
 struct App : overlay::NodeImpl<App>
 {
-    overlay::Stage *stage;
-    overlay::Layer *layer;
+    overlay::Stage* stage;
+    overlay::Layer* layer;
     std::vector<std::unique_ptr<overlay::Box>> boxes;
 
     // overlay::Color bg = rc();
@@ -24,7 +24,7 @@ struct App : overlay::NodeImpl<App>
     App(overlay::Stage &stage)
         : stage(&stage)
     {
-        layer = overlay::layer(stage, 0);
+        layer = overlay::CreateLayer(stage, 0);
 
         float num = 50;
         float width = 3840;
@@ -42,7 +42,7 @@ struct App : overlay::NodeImpl<App>
                 // box->anchor.offset = overlay::Vec{(float)x, (float)y};
                 // box->anchor.to = overlay::Alignments::TopLeft;
                 box->anchor = overlay::Anchor{
-                    overlay::screen(stage),
+                    overlay::GetScreen(stage),
                     overlay::Alignments::TopLeft,
                     overlay::Vec{(float)x, (float)y},
                     overlay::Alignments::TopLeft};
@@ -52,13 +52,13 @@ struct App : overlay::NodeImpl<App>
     }
 
     template<class Visit>
-    void traverse(Visit& visit)
+    void Traverse(Visit& visit)
     {
         for (auto& b : boxes) visit(*b);
         // for (auto& b : boxes) visit(*static_cast<Node*>(b.get()));
     }
 
-    void change()
+    void Change()
     {
         for (auto& b : boxes)
             b->background = rc();
@@ -67,14 +67,14 @@ struct App : overlay::NodeImpl<App>
     std::chrono::time_point<std::chrono::steady_clock> last_time;
     size_t updates = 0;
 
-    void onEvent(const overlay::Event& e)
+    void OnEvent(const overlay::Event& e)
     {
         // std::cout << "Event!\n";
         using namespace std::chrono;
 
-        change();
+        Change();
         // if (e.event == overlay::EventID::Initialize)
-            overlay::update(*layer, *this, false);
+            overlay::Update(*layer, *this, false);
 
         ++updates;
         if (duration_cast<milliseconds>(steady_clock::now() - last_time).count() > 1000)
@@ -88,9 +88,9 @@ struct App : overlay::NodeImpl<App>
 
 int main()
 {
-    auto stage = overlay::stage();
+    auto stage = overlay::CreateStage();
     auto app = App(stage);
-    return overlay::run(stage, [&](auto& e) { app.onEvent(e); });
+    return overlay::Run(stage, [&](auto& e) { app.OnEvent(e); });
     // using namespace std::chrono;
     // auto last_time = steady_clock::now();
     // auto updates = 0;

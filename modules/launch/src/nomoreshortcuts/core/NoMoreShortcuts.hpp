@@ -27,10 +27,10 @@ public:
 
     LaunchItem(App& app, std::unique_ptr<ResultItem> view);
 
-    void setPath(std::unique_ptr<ResultItem> newView);
+    void SetPath(std::unique_ptr<ResultItem> newView);
 
     template<class NodeVisitor>
-    void traverse(NodeVisitor& visit)
+    void Traverse(NodeVisitor& visit)
     {
         visit(box);
         visit(nameText);
@@ -45,12 +45,12 @@ public:
     overlay::Box box;
     overlay::Box highlight;
     overlay::Text closeText;
-    overlay::Stage *stage;
+    overlay::Stage* stage;
 
     ContextMenu(App& app);
 
     template<class NodeVisitor>
-    inline void traverse(NodeVisitor& visit)
+    inline void Traverse(NodeVisitor& visit)
     {
         if (visible)
         {
@@ -79,7 +79,7 @@ public:
     overlay::Color BorderColour{0.4, 0.5};
     overlay::Color BgColour{0.1};
 
-    overlay::Stage *stage;
+    overlay::Stage* stage;
 
     overlay::Box queryBox;
 
@@ -98,20 +98,20 @@ public:
 
     bool show;
 
-    overlay::Layer *mainLayer;
-    overlay::Layer *menuLayer;
+    overlay::Layer* mainLayer;
+    overlay::Layer* menuLayer;
 
     int updates = 0;
     std::chrono::time_point<std::chrono::steady_clock> last_update;
 
-    App(overlay::Stage *stage);
+    App(overlay::Stage* stage);
 
-    void resetItems(bool end = false);
+    void ResetItems(bool end = false);
 
-    void fixItemAnchors();
+    void FixItemAnchors();
 
     template<class NodeVisitor>
-    inline void traverse(NodeVisitor& visit)
+    inline void Traverse(NodeVisitor& visit)
     {
         if (show)
         {
@@ -124,17 +124,17 @@ public:
         visit(menu);
     }
 
-    void update();
+    void Update();
 
-    void resetQuery();
-    std::string join_query();
-    void updateQuery();
+    void ResetQuery();
+    std::string JoinQuery();
+    void UpdateQuery();
 
-    void move(int delta);
-    bool moveSelectedUp();
-    bool moveSelectedDown();
+    void Move(int delta);
+    bool MoveSelectedUp();
+    bool MoveSelectedDown();
 
-    void onEvent(const overlay::Event &e);
+    void OnEvent(const overlay::Event &e);
 };
 
 int AppMain();

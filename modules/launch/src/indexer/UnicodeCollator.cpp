@@ -1,22 +1,22 @@
 #include "UnicodeCollator.hpp"
 
 UnicodeCollator::UnicodeCollator(
-        std::vector<char> utf8_lookup,
-        std::vector<char> utf32_lookup)
-    : utf8_lookup(std::move(utf8_lookup))
-    , utf32_lookup(std::move(utf32_lookup))
+        std::vector<char> _utf8Lookup,
+        std::vector<char> _utf32Lookup)
+    : utf8Lookup(std::move(_utf8Lookup))
+    , utf32Lookup(std::move(_utf32Lookup))
 {}
 
-std::unique_ptr<UnicodeCollator> UnicodeCollator::new_ascii_collator()
+std::unique_ptr<UnicodeCollator> UnicodeCollator::NewAsciiCollator()
 {
-    std::vector<char> utf8_lookup(65'565);
-    std::vector<char> utf32_lookup(8'388'608);
+    std::vector<char> utf8Lookup(65'565);
+    std::vector<char> utf32Lookup(8'388'608);
 
     for (int a = 0; a < 128; ++a)
     {
-        utf8_lookup[a] = std::tolower(a);
+        utf8Lookup[a] = std::tolower(a);
         for (int b = 0; b < 256; ++b)
-            utf8_lookup[(static_cast<char16_t>(a) << 8) + b] = std::tolower(a);
+            utf8Lookup[(static_cast<char16_t>(a) << 8) + b] = std::tolower(a);
     }
 
     const std::string changers[] {
@@ -42,19 +42,19 @@ std::unique_ptr<UnicodeCollator> UnicodeCollator::new_ascii_collator()
         for (int i = 1; i < l.length(); i += 25)
         {
             const int codepoint = ((unsigned char)l[i] << 8) + (unsigned char)l[i + 1];
-            utf8_lookup[codepoint] = to;
+            utf8Lookup[codepoint] = to;
 
             const int code32 = ((unsigned char)l[i] & 0b0001'1111)
                 | (((unsigned char)l[i + 1] & 0b0011'1111) << 5);
 
-            utf32_lookup[code32] = to;
+            utf32Lookup[code32] = to;
         }
     }
 
-    return std::unique_ptr<UnicodeCollator>(new UnicodeCollator(utf8_lookup, utf32_lookup));
+    return std::unique_ptr<UnicodeCollator>(new UnicodeCollator(utf8Lookup, utf32Lookup));
 }
 
-std::string UnicodeCollator::to_plain_ascii(const std::string& value) const
+std::string UnicodeCollator::ConvertToPlainAscii(const std::string& value) const
 {
     std::string out;
     size_t len = value.length();
@@ -78,15 +78,15 @@ std::string UnicodeCollator::to_plain_ascii(const std::string& value) const
     return out;
 }
 
-bool UnicodeCollator::comp(const std::string_view& value, size_t& index, const char c) const
+bool UnicodeCollator::Compare(const std::string_view& value, size_t& index, const char c) const
 {
     const unsigned char first = value[index];
-    char n = utf8_lookup[first];
+    char n = utf8Lookup[first];
     if (first > 127)
     {
         if (first < 224)
         {
-            n = utf32_lookup[(first & 0b0001'1111) + (((unsigned char)(value[++index])) << 5)];
+            n = utf32Lookup[(first & 0b0001'1111) + (((unsigned char)(value[++index])) << 5)];
             if (n == 0)
                 n = '?';
         }
@@ -100,7 +100,7 @@ bool UnicodeCollator::comp(const std::string_view& value, size_t& index, const c
     return n == c;
 }
 
-bool UnicodeCollator::fuzzy_find(const std::string_view& value, const std::string& str) const
+bool UnicodeCollator::FuzzyFind(const std::string_view& value, const std::string& str) const
 {
     const size_t value_count = value.length();
     const size_t str_count = str.length();
@@ -115,9 +115,9 @@ bool UnicodeCollator::fuzzy_find(const std::string_view& value, const std::strin
 
     for (size_t i = 0; i <= max; ++i)
     {
-        if (!this->comp(value, i, first))
+        if (!this->Compare(value, i, first))
         {
-            while (++i <= max && !this->comp(value, i, first));
+            while (++i <= max && !this->Compare(value, i, first));
         }
 
         if (i <= max)
@@ -126,7 +126,7 @@ bool UnicodeCollator::fuzzy_find(const std::string_view& value, const std::strin
             const size_t true_end = j + str_count - 1;
             const size_t end = (value_count > true_end) ? true_end : value_count;
             for (size_t k = 1
-                ; j < end && this->comp(value, j, str[k])
+                ; j < end && this->Compare(value, j, str[k])
                 ; ++j, ++k);
 
             if (j == true_end)

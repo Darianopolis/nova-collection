@@ -73,10 +73,10 @@ namespace overlay
     IconLoader::IconLoader()
     {
         for (auto i{0}; i < 2; ++i)
-            threads.push_back(worker());
+            threads.push_back(Worker());
     }
 
-    std::thread IconLoader::worker()
+    std::thread IconLoader::Worker()
     {
         return std::thread([&]() {
             CoInitialize(nullptr);
@@ -137,14 +137,14 @@ namespace overlay
                 {
                     auto wic = stage->wic.Get();
 
-                    auto wic_bitmap = ComPtr<IWICBitmap>{};
-                    wic->CreateBitmapFromHICON(icon.get(), wic_bitmap.GetAddressOf());
+                    auto wicBitmap = ComPtr<IWICBitmap>{};
+                    wic->CreateBitmapFromHICON(icon.get(), wicBitmap.GetAddressOf());
 
                     auto converter = ComPtr<IWICFormatConverter>{};
                     wic->CreateFormatConverter(converter.GetAddressOf());
 
                     converter->Initialize(
-                        wic_bitmap.Get(),
+                        wicBitmap.Get(),
                         GUID_WICPixelFormat32bppPBGRA,
                         WICBitmapDitherTypeNone,
                         nullptr, 0,
@@ -157,7 +157,7 @@ namespace overlay
                         .dpiX = 96,
                         .dpiY = 96};
 
-                    render_target->CreateBitmapFromWicBitmap(
+                    renderTarget->CreateBitmapFromWicBitmap(
                         converter.Get(),
                         &props,
                         bitmap.GetAddressOf());
@@ -186,7 +186,7 @@ namespace overlay
     {
         for (auto& t : threads)
         {
-            auto lock = std::lock_guard{mutex};
+            std::lock_guard lock { mutex };
             queue.push(std::make_shared<IconRequest>("", false, nullptr));
         }
         cv.notify_all();
@@ -195,7 +195,7 @@ namespace overlay
             t.join();
     }
 
-    std::shared_ptr<IconFuture> IconLoader::load(std::string path, bool silent)
+    std::shared_ptr<IconFuture> IconLoader::Load(std::string path, bool silent)
     {
         auto lock = std::unique_lock{mutex};
 
@@ -214,13 +214,13 @@ namespace overlay
         using namespace std::chrono_literals;
 
         // Limited timeout search
-        if (block_wait && !silent)
+        if (blockWait && !silent)
         {
             request->silent = true;
             if (request->cv.wait_for(lock, 1ms) == std::cv_status::timeout || request->silent)
             {
                 // request->silent implies spurious wakeup
-                block_wait = false;
+                blockWait = false;
                 request->silent = false;
             }
         }
@@ -228,21 +228,21 @@ namespace overlay
         return future;
     }
 
-    void IconLoader::clear()
+    void IconLoader::Clear()
     {
         auto lock = std::lock_guard{mutex};
         icons.clear();
     }
 
-    void IconLoader::newFrame(Frame& frame)
+    void IconLoader::NewFrame(Frame& frame)
     {
-        block_wait = true;
+        blockWait = true;
         stage = frame.stage;
         hWnd = frame.layer->hWnd;
         if (version != frame.version)
         {
             version = frame.version;
-            render_target = frame.render_target;
+            renderTarget = frame.renderTarget;
             icons.clear();
         }
 
@@ -262,7 +262,7 @@ namespace overlay
     // ------------- Events ------------- //
     // ---------------------------------- //
 
-    bool key_down(const Event& event, KeyCode code)
+    bool KeyDown(const Event& event, KeyCode code)
     {
         auto state = GetAsyncKeyState(static_cast<int>(code));
         return (1 << 15) & state;
@@ -272,61 +272,61 @@ namespace overlay
     // ------------- Frame ------------- //
     // --------------------------------- //
 
-    Frame::Frame(Layer *layer, bool sticky, Rect bounds)
-        : layer(layer)
-        , bounds(bounds)
-        , stage(layer->stage)
-        , version(layer->stage->render_target_version)
-        , sticky(sticky)
-        , screen_pos{bounds.left, bounds.top}
+    Frame::Frame(Layer* _layer, bool _sticky, Rect _bounds)
+        : layer(_layer)
+        , bounds(_bounds)
+        , stage(_layer->stage)
+        , version(_layer->stage->renderTargetVersion)
+        , sticky(_sticky)
+        , screenPos{_bounds.left, _bounds.top}
     {
 
         auto width = static_cast<int>(bounds.right - bounds.left);
         auto height = static_cast<int>(bounds.bottom - bounds.top);
 
         rect = { 0, 0, width, height };
-        hdc_screen = GetDC(nullptr);
-        hdc = CreateCompatibleDC(hdc_screen);
-        bitmap = CreateCompatibleBitmap(hdc_screen, width, height);
-        bitmap_old = static_cast<HBITMAP>(SelectObject(hdc, bitmap));
+        hdcScreen = GetDC(nullptr);
+        hdc = CreateCompatibleDC(hdcScreen);
+        bitmap = CreateCompatibleBitmap(hdcScreen, width, height);
+        bitmapOld = static_cast<HBITMAP>(SelectObject(hdc, bitmap));
 
-        if (!stage->bindDC(hdc, rect) && !stage->bindDC(hdc, rect))
+        if (!stage->BindDC(hdc, rect) && !stage->BindDC(hdc, rect))
         {
             std::cout << "Failed to bind!\n";
             return;
         }
 
-        render_target = stage->render_target.Get();
-        version = stage->render_target_version;
+        renderTarget = stage->renderTarget.Get();
+        version = stage->renderTargetVersion;
 
-        render_target->BeginDraw();
+        renderTarget->BeginDraw();
         // std::cout << "Bound, pRenderTarget = " << pRenderTarget << '\n';
         drawing = true;
 
-        stage->icon_loader.newFrame(*this);
+        stage->iconLoader.NewFrame(*this);
     }
 
-    Frame frame(Layer& layer, bool sticky, Rect bounds)
+    Frame CreateFrame(Layer& layer, bool sticky, Rect bounds)
     {
         return Frame(&layer, sticky, bounds);
     }
 
-    bool drawable(Frame& frame)
+    bool Drawable(Frame& frame)
     {
-        return frame.canDraw();
+        return frame.CanDraw();
     }
 
-    void push(Frame& frame)
+    void Push(Frame& frame)
     {
-        frame.push();
+        frame.Push();
     }
 
-    bool Frame::canDraw()
+    bool Frame::CanDraw()
     {
         return drawing;
     }
 
-    void Frame::push()
+    void Frame::Push()
     {
         if (!drawing)
             return;
@@ -338,12 +338,12 @@ namespace overlay
         if (stage->debug)
         {
             auto brush = ComPtr<ID2D1SolidColorBrush>{};
-            render_target->CreateSolidColorBrush(D2D1::ColorF(0,0,0,1), brush.GetAddressOf());
-            render_target->DrawRectangle(D2D1::RectF(0, 0, width, height), brush.Get(), 5);
+            renderTarget->CreateSolidColorBrush(D2D1::ColorF(0,0,0,1), brush.GetAddressOf());
+            renderTarget->DrawRectangle(D2D1::RectF(0, 0, width, height), brush.Get(), 5);
         }
 
         // Draw bitmap to window and update Layer bounds
-        render_target->EndDraw();
+        renderTarget->EndDraw();
         drawing = false;
 
         // std::cout << "Bounds = " << bounds << '\n';
@@ -353,7 +353,7 @@ namespace overlay
         auto ptPos = POINT{static_cast<LONG>(bounds.left), static_cast<LONG>(bounds.top)};
         auto sizeWnd = SIZE{width, height};
         auto ptSrc = POINT{0, 0};
-        UpdateLayeredWindow(layer->hWnd, hdc_screen, &ptPos, &sizeWnd,
+        UpdateLayeredWindow(layer->hWnd, hdcScreen, &ptPos, &sizeWnd,
             hdc, &ptSrc, 0, &blend, ULW_ALPHA);
         layer->bounds = bounds;
 
@@ -373,12 +373,12 @@ namespace overlay
     Frame::~Frame()
     {
         if (drawing)
-            stage->render_target->EndDraw();
+            stage->renderTarget->EndDraw();
 
-        SelectObject(hdc, bitmap_old);
+        SelectObject(hdc, bitmapOld);
         DeleteObject(bitmap);
         DeleteObject(hdc);
-        ReleaseDC(nullptr, hdc_screen);
+        ReleaseDC(nullptr, hdcScreen);
     }
 
     // --------------------------------- //
@@ -391,37 +391,37 @@ namespace overlay
         return frame.stage->brush.Get();
     }
 
-    void Frame::box(
+    void Frame::Box(
             const Node& node,
             Color bg,
             Color border,
-            float border_width,
-            float corner_radius)
+            float borderWidth,
+            float cornerRadius)
     {
 
-        auto p = node.point_at(Alignments::TopLeft) - screen_pos;
+        auto p = node.PointAt(Alignments::TopLeft) - screenPos;
 
-        auto hBSize = 0.5f * border_width - 0.1f;
+        auto hBSize = 0.5f * borderWidth - 0.1f;
 
-        render_target->DrawRoundedRectangle(
+        renderTarget->DrawRoundedRectangle(
             D2D1::RoundedRect(
                 D2D1::RectF(
                     p.x - hBSize,
                     p.y - hBSize,
                     p.x + node.size.x + hBSize,
                     p.y + node.size.y + hBSize),
-                corner_radius + hBSize, corner_radius + hBSize),
+                cornerRadius + hBSize, cornerRadius + hBSize),
             get_brush(*this, border),
-            border_width + 0.2);
+            borderWidth + 0.2);
 
-        render_target->FillRoundedRectangle(
+        renderTarget->FillRoundedRectangle(
             D2D1::RoundedRect(
                 D2D1::RectF(
                     p.x,
                     p.y,
                     p.x + node.size.x,
                     p.y + node.size.y),
-                corner_radius, corner_radius),
+                cornerRadius, cornerRadius),
             get_brush(*this, bg));
     }
 
@@ -429,33 +429,33 @@ namespace overlay
     // ------------- Stage ------------- //
     // --------------------------------- //
 
-    bool Stage::bindDC(HDC hdc, RECT &rc)
+    bool Stage::BindDC(HDC hdc, RECT &rc)
     {
-        if (!render_target)
+        if (!renderTarget)
         {
             const auto properties = D2D1::RenderTargetProperties(
                 D2D1_RENDER_TARGET_TYPE_DEFAULT,
                 D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM, D2D1_ALPHA_MODE_PREMULTIPLIED),
                 0, 0, D2D1_RENDER_TARGET_USAGE_GDI_COMPATIBLE, D2D1_FEATURE_LEVEL_DEFAULT);
 
-            render_target_version = getUID();
+            renderTargetVersion = GetUID();
 
-            if (FAILED(d2d1->CreateDCRenderTarget(&properties, render_target.GetAddressOf())))
+            if (FAILED(d2d1->CreateDCRenderTarget(&properties, renderTarget.GetAddressOf())))
                 return false;
 
-            render_target->CreateSolidColorBrush(D2D1::ColorF(0, 0, 0, 0), brush.ReleaseAndGetAddressOf());
+            renderTarget->CreateSolidColorBrush(D2D1::ColorF(0, 0, 0, 0), brush.ReleaseAndGetAddressOf());
         }
 
-        if (FAILED(render_target->BindDC(hdc, &rc)))
+        if (FAILED(renderTarget->BindDC(hdc, &rc)))
         {
-            render_target.Reset();
+            renderTarget.Reset();
             return false;
         }
 
         return true;
     }
 
-    void Stage::initDirectX()
+    void Stage::InitDirectX()
     {
         D2D1CreateFactory(
             D2D1_FACTORY_TYPE_MULTI_THREADED,
@@ -474,7 +474,7 @@ namespace overlay
             reinterpret_cast<void**>(wic.GetAddressOf()));
     }
 
-    void Stage::updateScreens()
+    void Stage::UpdateScreens()
     {
         screen.size = Vec{
             static_cast<float>(GetSystemMetrics(SM_CXSCREEN)),
@@ -484,7 +484,7 @@ namespace overlay
         screen.position = Vec{0, 0};
     }
 
-    int Stage::initWin32()
+    int Stage::InitWin32()
     {
         instance = GetModuleHandleW(nullptr);
         CoCreateGuid(&guid);
@@ -519,7 +519,7 @@ namespace overlay
         return 0;
     }
 
-    int Stage::createWindow()
+    int Stage::MakeWindow()
     {
         for (auto i = 0; i < 2; ++i)
         {
@@ -545,13 +545,13 @@ namespace overlay
             layers.emplace_back(new Layer{this, hWnd, Rect{}});
         }
 
-        mouse_track.hwndTrack = layers.front()->hWnd;
-        TrackMouseEvent(&mouse_track);
+        mouseTrack.hwndTrack = layers.front()->hWnd;
+        TrackMouseEvent(&mouseTrack);
 
         return 0;
     }
 
-    void Stage::createTrayIcon(std::string_view tooltip)
+    void Stage::CreateTrayIcon(std::string_view tooltip)
     {
         // Create System tray icon
         // https://docs.microsoft.com/en-us/windows/win32/api/shellapi/ns-shellapi-notifyicondataw
@@ -580,17 +580,16 @@ namespace overlay
     // class __declspec(uuid("9D0B8B92-4E1C-488e-A1E1-2331AFCE2CB5")) PrinterIcon;
 
     Stage::Stage()
-        : mouse_track{.cbSize = sizeof(mouse_track)
-        , .dwFlags = TME_LEAVE}
+        : mouseTrack{ .cbSize = sizeof(mouseTrack), .dwFlags = TME_LEAVE }
     {
         CoInitialize(nullptr);
         SetProcessDPIAware();
 
-        initDirectX();
-        initWin32();
-        updateScreens();
-        createWindow();
-        createTrayIcon("OverlayTooltip");
+        InitDirectX();
+        InitWin32();
+        UpdateScreens();
+        MakeWindow();
+        CreateTrayIcon("OverlayTooltip");
     }
 
     Stage::~Stage()
@@ -604,27 +603,27 @@ namespace overlay
         CoUninitialize();
     }
 
-    void Stage::quit(int code)
+    void Stage::Quit(int code)
     {
         PostQuitMessage(code);
     }
 
-    Layer* layer(Stage& stage, uint32_t id)
+    Layer* CreateLayer(Stage& stage, uint32_t id)
     {
-        return stage.layer(id);
+        return stage.GetLayer(id);
     }
 
-    Node* screen(Stage& stage)
+    Node* GetScreen(Stage& stage)
     {
         return &stage.screen;
     }
 
-    void add_hotkey_impl(Stage& stage, uint32_t id, KeyCode key, uint32_t modifier)
+    void AddHotkeyImpl(Stage& stage, uint32_t id, KeyCode key, uint32_t modifier)
     {
         RegisterHotKey(stage.layers.front()->hWnd, id, modifier, static_cast<UINT>(key));
     }
 
-    void remove_hotkey(Stage& stage, uint32_t id)
+    void RemoveHotkey(Stage& stage, uint32_t id)
     {
         UnregisterHotKey(stage.layers.front()->hWnd, id);
     }
@@ -666,10 +665,10 @@ namespace overlay
         switch (msg)
         {
         break;case WM_HOTKEY:
-            sendEvent(Event{layer, this, EventCategory::Stage, EventID::Hotkey, static_cast<uint32_t>(wParam)});
+            SendEvent(Event{layer, this, EventCategory::Stage, EventID::Hotkey, static_cast<uint32_t>(wParam)});
         break;case WMAPP_REDRAW_ICONS:
             // std::cout << "Drawing icons!\n";
-            sendEvent(Event{layer, this, EventCategory::Stage, EventID::IconsLoaded, 0u});
+            SendEvent(Event{layer, this, EventCategory::Stage, EventID::IconsLoaded, 0u});
         break;case WMAPP_NOTIFYCALLBACK:
             {
                 // https://stackoverflow.com/questions/41649303/difference-between-notifyicon-version-and-notifyicon-version-4-used-in-notifyico
@@ -681,19 +680,19 @@ namespace overlay
                 switch (notifyEvent)
                 {
                 break;case NIN_SELECT:
-                    sendEvent(Event{layer, this, EventCategory::Stage, EventID::NotifySelect});
+                    SendEvent(Event{layer, this, EventCategory::Stage, EventID::NotifySelect});
                 break;case WM_CONTEXTMENU:
-                    sendEvent(Event{layer, this, EventCategory::Stage, EventID::NotifyContext});
+                    SendEvent(Event{layer, this, EventCategory::Stage, EventID::NotifyContext});
                 }
             }
         break;case WM_DESTROY:
             PostQuitMessage(0);
         break;case WM_KEYDOWN:
-            sendEvent(Event{layer, this, EventCategory::Button, EventID::KeyPressed, static_cast<KeyCode>(wParam)});
+            SendEvent(Event{layer, this, EventCategory::Button, EventID::KeyPressed, static_cast<KeyCode>(wParam)});
         break;case WM_KEYUP:
-            sendEvent(Event{layer, this, EventCategory::Button, EventID::KeyReleased, static_cast<KeyCode>(wParam)});
+            SendEvent(Event{layer, this, EventCategory::Button, EventID::KeyReleased, static_cast<KeyCode>(wParam)});
         break;case WM_CHAR:
-            sendEvent(Event{layer, this, EventCategory::Button, EventID::CharTyped, static_cast<uint32_t>(wParam)});
+            SendEvent(Event{layer, this, EventCategory::Button, EventID::CharTyped, static_cast<uint32_t>(wParam)});
         // break;case WM_MOUSEACTIVATE: {
         //   auto hitTest = LOWORD(lParam);
         //   std::cout << "WM_MOUSEACTIVATE - layer = " << layer << '\n';
@@ -715,11 +714,11 @@ namespace overlay
         // break;case WM_NCACTIVATE:
         //   sendEvent(Event{*this, EventCategory::Stage, EventID::WindowActivate});
         break;case WM_LBUTTONDOWN:
-            sendEvent(Event{layer, this, EventCategory::Button, EventID::KeyPressed, KeyCode::MouseLButton});
+            SendEvent(Event{layer, this, EventCategory::Button, EventID::KeyPressed, KeyCode::MouseLButton});
         break;case WM_LBUTTONUP:
-            sendEvent(Event{layer, this, EventCategory::Button, EventID::KeyReleased, KeyCode::MouseLButton});
+            SendEvent(Event{layer, this, EventCategory::Button, EventID::KeyReleased, KeyCode::MouseLButton});
         break;case WM_MOUSELEAVE:
-            sendEvent(Event{layer, this, EventCategory::Mouse, EventID::MouseLeave});
+            SendEvent(Event{layer, this, EventCategory::Mouse, EventID::MouseLeave});
             mouse_pos = std::optional<Vec>();
         break;case WM_MOUSEMOVE:
             {
@@ -730,13 +729,13 @@ namespace overlay
 
                 if (!mouse_pos.has_value())
                 {
-                    mouse_track.hwndTrack = layer->hWnd;
-                    TrackMouseEvent(&mouse_track);
+                    mouseTrack.hwndTrack = layer->hWnd;
+                    TrackMouseEvent(&mouseTrack);
                     SetCapture(hWnd);
-                    sendEvent(Event{layer, this, EventCategory::Mouse, EventID::MouseEnter, Vec { 0, 0 }});
+                    SendEvent(Event{layer, this, EventCategory::Mouse, EventID::MouseEnter, Vec { 0, 0 }});
                 }
 
-                sendEvent(Event{layer, this, EventCategory::Mouse, EventID::MouseMoved,
+                SendEvent(Event{layer, this, EventCategory::Mouse, EventID::MouseMoved,
                     newMouse - mouse_pos.value_or(newMouse)});
                 mouse_pos = newMouse;
             }
@@ -751,17 +750,17 @@ namespace overlay
                 auto delta = static_cast<float>(GET_WHEEL_DELTA_WPARAM(wParam)) / WHEEL_DELTA;
                 if (msg == WM_MOUSEWHEEL)
                 {
-                    sendEvent(Event{layer, this, EventCategory::Mouse, EventID::MouseScroll, Vec { 0, delta }});
+                    SendEvent(Event{layer, this, EventCategory::Mouse, EventID::MouseScroll, Vec { 0, delta }});
                 }
                 else
                 {
-                    sendEvent(Event{layer, this, EventCategory::Mouse, EventID::MouseScroll, Vec { delta, 0 }});
+                    SendEvent(Event{layer, this, EventCategory::Mouse, EventID::MouseScroll, Vec { delta, 0 }});
                 }
             }
         break;case WM_SETFOCUS:
-            sendEvent(Event{layer, this, EventCategory::Stage, EventID::FocusGained});
+            SendEvent(Event{layer, this, EventCategory::Stage, EventID::FocusGained});
         break;case WM_KILLFOCUS:
-            sendEvent(Event{layer, this, EventCategory::Stage, EventID::FocusLost});
+            SendEvent(Event{layer, this, EventCategory::Stage, EventID::FocusLost});
         break;default:
             return DefWindowProcW(hWnd, msg, wParam, lParam);
         }
@@ -769,65 +768,65 @@ namespace overlay
         return 0;
     }
 
-    std::optional<Vec> mouse_pos(const Event& event)
+    std::optional<Vec> GetMousePos(const Event& event)
     {
         return event.stage->mouse_pos;
     }
 
-    size_t Stage::getUID()
+    size_t Stage::GetUID()
     {
-        return next_uid += 2;
+        return nextUID += 2;
     }
 
-    Stage stage()
+    Stage CreateStage()
     {
         return Stage();
     }
 
-    int run(Stage& stage, std::function<void(const Event&)> event_handler)
+    int Run(Stage& stage, std::function<void(const Event&)> eventHandler)
     {
-        return stage.run(event_handler);
+        return stage.Run(eventHandler);
     }
 
-    void delete_impl(Stage* stage)
+    void DeleteImpl(Stage* stage)
     {
         delete stage;
     }
 
-    void quit(Stage& stage, int code)
+    void Quit(Stage& stage, int code)
     {
-        stage.quit(code);
+        stage.Quit(code);
     }
 
-    Rect& get_layer_bounds(Layer& layer)
+    Rect& GetLayerBounds(Layer& layer)
     {
         return layer.bounds;
     }
 
-    void Layer::hide()
+    void Layer::Hide()
     {
         ShowWindow(hWnd, 0);
     }
 
-    void hide(Layer& layer)
+    void Hide(Layer& layer)
     {
         ShowWindow(layer.hWnd, 0);
     }
 
-    void Layer::focus()
+    void Layer::Focus()
     {
         SetForegroundWindow(hWnd);
     }
 
-    void focus(Layer& layer)
+    void Focus(Layer& layer)
     {
         SetForegroundWindow(layer.hWnd);
     }
 
-    int Stage::run(std::function<void(const Event&)> callback)
+    int Stage::Run(std::function<void(const Event&)> callback)
     {
-        this->event_handler = callback;
-        sendEvent(Event{nullptr, this, EventCategory::Stage, EventID::Initialize});
+        this->eventHandler = callback;
+        SendEvent(Event{nullptr, this, EventCategory::Stage, EventID::Initialize});
 
         auto msg = MSG{};
         while (GetMessageW(&msg, nullptr, 0, 0))
@@ -846,18 +845,18 @@ namespace overlay
     Box::~Box()
     {}
 
-    void Box::draw(const Frame& context)
+    void Box::Draw(const Frame& context)
     {
         if (!visible)
             return;
 
-        auto pRenderTarget = context.render_target;
-        auto p = point_at(Alignments::TopLeft) - context.screen_pos;
+        auto pRenderTarget = context.renderTarget;
+        auto p = PointAt(Alignments::TopLeft) - context.screenPos;
 
-        if (border_width > 0)
+        if (borderWidth > 0)
         {
-            auto hBSize = 0.5f * border_width - 0.1f;
-            if (corner_radius == 0)
+            auto hBSize = 0.5f * borderWidth - 0.1f;
+            if (cornerRadius == 0)
             {
                 pRenderTarget->DrawRectangle(
                     D2D1::RectF(
@@ -866,7 +865,7 @@ namespace overlay
                         p.x + size.x + hBSize,
                         p.y + size.y + hBSize),
                     get_brush(context, border),
-                    border_width);
+                    borderWidth);
             }
             else
             {
@@ -877,13 +876,13 @@ namespace overlay
                             p.y - hBSize,
                             p.x + size.x + hBSize,
                             p.y + size.y + hBSize),
-                        corner_radius + hBSize, corner_radius + hBSize),
+                        cornerRadius + hBSize, cornerRadius + hBSize),
                     get_brush(context, border),
-                    border_width + 0.2);
+                    borderWidth + 0.2);
             }
         }
 
-        if (corner_radius == 0)
+        if (cornerRadius == 0)
         {
             pRenderTarget->FillRectangle(
                 D2D1::RectF(
@@ -902,7 +901,7 @@ namespace overlay
                     p.y,
                     p.x + size.x,
                     p.y + size.y),
-                corner_radius, corner_radius),
+                cornerRadius, cornerRadius),
             get_brush(context, background));
         }
     }
@@ -913,35 +912,35 @@ namespace overlay
 
     IconFuture::~IconFuture() {}
 
-    void Icon::reposition(Rect& bounds)
+    void Icon::Reposition(Rect& bounds)
     {
         size.x = GetSystemMetrics(SM_CXICON);
         size.y = GetSystemMetrics(SM_CYICON);
-        static_cast<Node*>(this)->reposition(bounds);
+        static_cast<Node*>(this)->Reposition(bounds);
     }
 
     void IconCache::operator=(nullptr_t)
     {
-        if (icon_future)
+        if (iconFuture)
         {
-            std::lock_guard lock{icon_future->mutex};
-            icon_future->cancelled = true;
+            std::lock_guard lock{iconFuture->mutex};
+            iconFuture->cancelled = true;
         }
-        icon_future = nullptr;
+        iconFuture = nullptr;
     }
 
     IconCache::IconCache() {}
 
     IconCache::~IconCache()
     {
-        if (icon_future)
+        if (iconFuture)
         {
-            std::lock_guard lock{icon_future->mutex};
-            icon_future->cancelled = true;
+            std::lock_guard lock{iconFuture->mutex};
+            iconFuture->cancelled = true;
         }
     }
 
-    void Icon::draw(const Frame& context)
+    void Icon::Draw(const Frame& context)
     {
         if (!visible)
             return;
@@ -955,21 +954,21 @@ namespace overlay
         //     D2D1::RectF(p.x, p.y, p.x + size.x, p.y + size.y));
         // }
 
-        if (!cache.icon_future)
+        if (!cache.iconFuture)
         {
             // std::cout << "future not found!\n";
-            cache.icon_future = context.stage->icon_loader.load(path);
+            cache.iconFuture = context.stage->iconLoader.Load(path);
             // std::cout << "Got future! - " << cache.icon_future << '\n';
         }
 
         // std::cout << "future = " << cache.icon_future << '\n';
-        std::lock_guard future_lock{cache.icon_future->mutex};
-        if (cache.icon_future->icon)
+        std::lock_guard future_lock{cache.iconFuture->mutex};
+        if (cache.iconFuture->icon)
         {
             // std::cout << "   icon = " << cache.icon_future->icon.get() << '\n';
-            auto p = point_at(Alignments::TopLeft) - context.screen_pos;
-            context.render_target->DrawBitmap(
-                cache.icon_future->icon.Get(),
+            auto p = PointAt(Alignments::TopLeft) - context.screenPos;
+            context.renderTarget->DrawBitmap(
+                cache.iconFuture->icon.Get(),
                 D2D1::RectF(p.x, p.y, p.x + size.x, p.y + size.y));
         }
     }
@@ -1044,7 +1043,7 @@ namespace overlay
 
     Text::~Text() {}
 
-    void Text::layout(const Stage& stage, bool reset)
+    void Text::Layout(const Stage& stage, bool reset)
     {
         if (reset)
             cache = nullptr;
@@ -1071,9 +1070,9 @@ namespace overlay
             bounds.x, bounds.y,
             cache.layout.ReleaseAndGetAddressOf());
 
-        if (line_height != 0)
+        if (lineHeight != 0)
         {
-            cache.layout->SetLineSpacing(DWRITE_LINE_SPACING_METHOD_UNIFORM, line_height, baseline);
+            cache.layout->SetLineSpacing(DWRITE_LINE_SPACING_METHOD_UNIFORM, lineHeight, baseline);
             cache.layout->SetWordWrapping(DWRITE_WORD_WRAPPING_EMERGENCY_BREAK);
         }
 
@@ -1119,20 +1118,20 @@ namespace overlay
             bottomBaseline += lineMetrics[lines - 1].baseline;
         }
 
-        topleft_offset = Vec {
-            left_advance ? -textBounds.left : -overhangBounds.left,
-            align_top_to_line ? -textBounds.top : -overhangBounds.top
+        topleftOffset = Vec {
+            leftAdvance ? -textBounds.left : -overhangBounds.left,
+            alignTopToLine ? -textBounds.top : -overhangBounds.top
         };
 
         size = Vec {
-            (right_advance ? textBounds.right : overhangBounds.right) + topleft_offset.x,
-            (align_to_descender ? overhangBounds.bottom : bottomBaseline) + topleft_offset.y
+            (rightAdvance ? textBounds.right : overhangBounds.right) + topleftOffset.x,
+            (alignToDescender ? overhangBounds.bottom : bottomBaseline) + topleftOffset.y
         };
 
-        padding.bottom = align_to_descender ? 0 : overhangBounds.bottom - bottomBaseline;
+        padding.bottom = alignToDescender ? 0 : overhangBounds.bottom - bottomBaseline;
     }
 
-    int Text::lineCount()
+    int Text::LineCount()
     {
         if (!cache.layout)
             return 0;
@@ -1141,17 +1140,17 @@ namespace overlay
         return metrics.lineCount;
     }
 
-    void Text::draw(const Frame& context)
+    void Text::Draw(const Frame& context)
     {
         if (!visible)
             return;
 
-        auto pRenderTarget = context.render_target;
+        auto pRenderTarget = context.renderTarget;
 
-        layout(*context.stage);
+        Layout(*context.stage);
 
-        auto p = point_at(Alignments::TopLeft) - context.screen_pos;
-        auto tp = p + topleft_offset;
+        auto p = PointAt(Alignments::TopLeft) - context.screenPos;
+        auto tp = p + topleftOffset;
 
         if (context.stage->debug)
         {
@@ -1189,6 +1188,6 @@ namespace overlay
 
     int Start(std::function<void(const Event&)> callback)
     {
-        return Stage{}.run(callback);
+        return Stage{}.Run(callback);
     }
 }

@@ -10,12 +10,12 @@
 
 struct Index
 {
-    // PathTree *tree;
-    // UnicodeCollator *collator;
+    // PathTree* tree;
+    // UnicodeCollator* collator;
 
     std::vector<std::string> keywords;
 
-    // Index(PathTree *tree, UnicodeCollator *collator)
+    // Index(PathTree* tree, UnicodeCollator* collator)
     //   : tree(tree)
     //   , collator(collator) {}
 
@@ -25,10 +25,10 @@ struct Index
 
     Index(const std::filesystem::path& path)
         : path(path)
-        , tree(PathTree::load(getenv("USERPROFILE") + std::string("\\.nms\\tree.bin")))
-        , collator(UnicodeCollator::new_ascii_collator())
+        , tree(PathTree::Load(getenv("USERPROFILE") + std::string("\\.nms\\tree.bin")))
+        , collator(UnicodeCollator::NewAsciiCollator())
     {
-        tree.setMatchBits(1, 1, 0, 0);
+        tree.SetMatchBits(1, 1, 0, 0);
         tree.matchBits = 1;
         tree.useInheritMatch = true;
     }
@@ -45,14 +45,14 @@ struct Index
 
         if (lazy)
         {
-            tree.matchLazy(tree.matchBits, matchBit, [&](std::string_view str) {
-                return collator->fuzzy_find(str, needle);
+            tree.MatchLazy(tree.matchBits, matchBit, [&](std::string_view str) {
+                return collator->FuzzyFind(str, needle);
             });
         }
         else
         {
-            tree.match(matchBit, [&](std::string_view str) {
-                return collator->fuzzy_find(str, needle);
+            tree.Match(matchBit, [&](std::string_view str) {
+                return collator->FuzzyFind(str, needle);
             });
         }
     }
@@ -76,7 +76,7 @@ struct Index
             if (i >= keywords.size())
             {
                 // New keyword, update tree match bits
-                tree.setMatchBits(matchBit, matchBit, matchBit, 0);
+                tree.SetMatchBits(matchBit, matchBit, matchBit, 0);
                 tree.matchBits |= matchBit;
                 filter(matchBit, new_keywords[i], false);
             }
@@ -93,7 +93,7 @@ struct Index
         {
             // std::cout << "Clearing old keyword [" << keywords[i] << "]\n";
             auto matchBit = static_cast<uint8_t>(1 << i);
-            tree.setMatchBits(matchBit, 0, matchBit, 0);
+            tree.SetMatchBits(matchBit, 0, matchBit, 0);
             tree.matchBits &= ~matchBit;
         }
 

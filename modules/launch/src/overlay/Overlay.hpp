@@ -169,18 +169,18 @@ namespace overlay
     struct Event
     {
 
-        Layer *layer;
-        Stage *stage;
+        Layer* layer;
+        Stage* stage;
         EventCategory category;
         EventID event;
 
         std::variant<KeyCode, uint32_t, Vec>(data);
 
         // Event should only be constructed by a Stage's event handler.
-        explicit Event(Layer *layer, Stage *stage, EventCategory category, EventID event) noexcept;
-        explicit Event(Layer *layer, Stage *stage, EventCategory category, EventID event, KeyCode key) noexcept;
-        explicit Event(Layer *layer, Stage *stage, EventCategory category, EventID event, uint32_t codepoint) noexcept;
-        explicit Event(Layer *layer, Stage *stage, EventCategory category, EventID event, Vec delta) noexcept;
+        explicit Event(Layer* layer, Stage* stage, EventCategory category, EventID event) noexcept;
+        explicit Event(Layer* layer, Stage* stage, EventCategory category, EventID event, KeyCode key) noexcept;
+        explicit Event(Layer* layer, Stage* stage, EventCategory category, EventID event, uint32_t codepoint) noexcept;
+        explicit Event(Layer* layer, Stage* stage, EventCategory category, EventID event, Vec delta) noexcept;
 
         bool operator==(EventID id) const noexcept
         {
@@ -188,13 +188,13 @@ namespace overlay
         }
 
         // Valid for [KeyPressed, KeyReleased]
-        KeyCode key() const noexcept;
+        KeyCode GetKey() const noexcept;
 
         // Valid for [CharTyped]
-        uint32_t codepoint() const noexcept;
+        uint32_t GetCodepoint() const noexcept;
 
         // Valid for [MouseMoved, MouseScrolled]
-        Vec delta() const noexcept;
+        Vec GetDelta() const noexcept;
     };
 
     // --------------------------------- //
@@ -202,34 +202,34 @@ namespace overlay
     // --------------------------------- //
 
     struct Frame;
-    void delete_impl(Frame*);
-    void delete_impl(Stage*);
+    void DeleteImpl(Frame*);
+    void DeleteImpl(Stage*);
 
-    std::optional<Vec> mouse_pos(const Event& event);
-    bool key_down(const Event& event, KeyCode code);
-    bool mouseover(const Event& event, Node& node);
+    std::optional<Vec> GetMousePos(const Event& event);
+    bool KeyDown(const Event& event, KeyCode code);
+    bool Mouseover(const Event& event, Node& node);
 
-    Frame frame(Layer& layer, bool sticky, Rect bounds);
-    void push(Frame&);
-    bool drawable(Frame&);
-    void focus(Layer&);
-    void hide(Layer&);
-    Stage stage();
-    int run(Stage&, std::function<void(const Event&)> event_handler);
+    Frame CreateFrame(Layer& layer, bool sticky, Rect bounds);
+    void Push(Frame&);
+    bool Drawable(Frame&);
+    void Focus(Layer&);
+    void Hide(Layer&);
+    Stage CreateStage();
+    int Run(Stage&, std::function<void(const Event&)> event_handler);
 
-    Layer* layer(Stage&, uint32_t id);
-    Node* screen(Stage&);
-    void quit(Stage&, int code);
+    Layer* CreateLayer(Stage&, uint32_t id);
+    Node* GetScreen(Stage&);
+    void Quit(Stage&, int code);
 
-    void add_hotkey_impl(Stage&, uint32_t id, KeyCode key, uint32_t modifier);
+    void AddHotkeyImpl(Stage&, uint32_t id, KeyCode key, uint32_t modifier);
 
     template<AllKeyMods ... KeyMods>
-    inline void add_hotkey(Stage& stage, uint32_t id, KeyCode key, KeyMods && ... mods)
+    inline void AddHotkey(Stage& stage, uint32_t id, KeyCode key, KeyMods && ... mods)
     {
-        add_hotkey_impl(stage, id, key, (static_cast<uint32_t>(mods) | ... | 0));
+        AddHotkeyImpl(stage, id, key, (static_cast<uint32_t>(mods) | ... | 0));
     }
 
-    void remove_hotkey(Stage& stage, uint32_t id);
+    void RemoveHotkey(Stage& stage, uint32_t id);
 
     // -------------------------------- //
     // ------------- Node ------------- //
@@ -239,7 +239,7 @@ namespace overlay
 
     struct Anchor
     {
-        Node *parent;
+        Node* parent;
         Align from;
         Vec offset;
         Align to;
@@ -261,14 +261,14 @@ namespace overlay
 
         Node(): visible(true) {}
 
-        virtual void visit(NodeDrawVisitor&) {}
-        virtual void visit(NodeLayoutVisitor&) {}
+        virtual void Visit(NodeDrawVisitor&) {}
+        virtual void Visit(NodeLayoutVisitor&) {}
 
         template<class NodeVisitor>
-        inline void traverse(NodeVisitor&) { }
-        inline void draw(Frame& frame) { }
+        inline void Traverse(NodeVisitor&) { }
+        inline void Draw(Frame& frame) { }
 
-        Vec point_at(const Align alignTo) const
+        Vec PointAt(const Align alignTo) const
         {
             return Vec {
                 position.x + size.x * (alignTo.x - anchor.to.x),
@@ -276,15 +276,15 @@ namespace overlay
             };
         }
 
-        void reposition(Rect& b)
+        void Reposition(Rect& b)
         {
-            position = anchor.parent->point_at(anchor.from) + anchor.offset;
+            position = anchor.parent->PointAt(anchor.from) + anchor.offset;
 
             if (!visible)
                 return;
 
-            const auto topLeft = point_at(Alignments::TopLeft);
-            const auto botRight = point_at(Alignments::BottomRight);
+            const auto topLeft = PointAt(Alignments::TopLeft);
+            const auto botRight = PointAt(Alignments::BottomRight);
 
             b.left = std::min(b.left, topLeft.x - padding.left);
             b.right = std::max(b.right, botRight.x + padding.right);
@@ -292,10 +292,10 @@ namespace overlay
             b.bottom = std::max(b.bottom, botRight.y + padding.bottom);
         }
 
-        bool check_hit(const Vec& p) const
+        bool CheckHit(const Vec& p) const
         {
-            const auto topLeft = point_at(Alignments::TopLeft);
-            const auto botRight = point_at(Alignments::BottomRight);
+            const auto topLeft = PointAt(Alignments::TopLeft);
+            const auto botRight = PointAt(Alignments::BottomRight);
 
             return (p.x >= topLeft.x && p.y >= topLeft.y
                 && p.x < botRight.x && p.y < botRight.y);
@@ -303,32 +303,32 @@ namespace overlay
     };
 
     template<class NodeImpl>
-    inline void draw(NodeImpl& node, Frame& frame)
+    inline void Draw(NodeImpl& node, Frame& frame)
     {
-        node.draw(frame);
+        node.Draw(frame);
     }
 
     template<class NodeImpl, class Visitor>
-    inline void traverse(NodeImpl& node, Visitor& visit)
+    inline void Traverse(NodeImpl& node, Visitor& visit)
     {
-        node.traverse(visit);
+        node.Traverse(visit);
     }
 
     template<class NodeImpl>
-    inline void reposition(NodeImpl& node, Rect& rect)
+    inline void Reposition(NodeImpl& node, Rect& rect)
     {
-        node.reposition(rect);
+        node.Reposition(rect);
     }
 
     template<class Impl>
     struct NodeImpl : Node
     {
-        virtual void visit(NodeDrawVisitor& visit)
+        virtual void Visit(NodeDrawVisitor& visit)
         {
             visit(*static_cast<Impl*>(this));
         }
 
-        virtual void visit(NodeLayoutVisitor& visit)
+        virtual void Visit(NodeLayoutVisitor& visit)
         {
             visit(*static_cast<Impl*>(this));
         }
@@ -342,13 +342,13 @@ namespace overlay
     {
         Color background;
         Color border;
-        int border_width = 0;
-        int corner_radius = 0;
+        int borderWidth = 0;
+        int cornerRadius = 0;
 
         Box(Color bg_color, Color border_color, float border_width, float corner_radius);
         ~Box();
 
-        void draw(const Frame& context);
+        void Draw(const Frame& context);
     };
 
     // --------------------------------- //
@@ -364,9 +364,9 @@ namespace overlay
         Icon();
         Icon(std::string_view path);
 
-        void reposition(Rect& bounds);
+        void Reposition(Rect& bounds);
 
-        void draw(const Frame& context);
+        void Draw(const Frame& context);
     };
 
     // -------------------------------- //
@@ -397,13 +397,13 @@ namespace overlay
         Color color;
         Vec bounds;
 
-        Vec topleft_offset;
-        bool align_to_descender = false;
+        Vec topleftOffset;
+        bool alignToDescender = false;
         bool transparent_target = false;
-        bool left_advance = false;
-        bool right_advance = false;
-        bool align_top_to_line = false;
-        float line_height = 0;
+        bool leftAdvance = false;
+        bool rightAdvance = false;
+        bool alignTopToLine = false;
+        float lineHeight = 0;
         float baseline = 0;
         bool nowrap = false;
 
@@ -412,27 +412,27 @@ namespace overlay
         Text(Font* font, std::string_view str, Color color, Vec bounds);
         ~Text();
 
-        void layout(const Stage& context, bool reset = false);
+        void Layout(const Stage& context, bool reset = false);
 
-        int lineCount();
+        int LineCount();
 
-        void draw(const Frame& context);
+        void Draw(const Frame& context);
     };
 
     struct NodeDrawVisitor
     {
         Frame& frame;
 
-        inline void operator ()(Node& node)
+        inline void operator()(Node& node)
         {
-            node.visit(*this);
+            node.Visit(*this);
         }
 
         template<class NodeImpl>
-        void operator ()(NodeImpl& node)
+        void operator()(NodeImpl& node)
         {
-            overlay::draw(node, frame);
-            overlay::traverse(node, *this);
+            overlay::Draw(node, frame);
+            overlay::Traverse(node, *this);
         }
     };
 
@@ -440,22 +440,22 @@ namespace overlay
     {
         Rect& rect;
 
-        inline void operator ()(Node& node)
+        inline void operator()(Node& node)
         {
-            node.visit(*this);
+            node.Visit(*this);
         }
 
         template<class NodeImpl>
-        void operator ()(NodeImpl& node)
+        void operator()(NodeImpl& node)
         {
-            overlay::reposition(node, rect);
-            overlay::traverse(node, *this);
+            overlay::Reposition(node, rect);
+            overlay::Traverse(node, *this);
         }
     };
 
-    Rect& get_layer_bounds(Layer&);
+    Rect& GetLayerBounds(Layer&);
 
-    inline void lazy_snap_floor(float& cur, float next)
+    inline void LazySnapFloor(float& cur, float next)
     {
         constinit static auto snap = 100.f;
         constinit static auto buffer = 100.f;
@@ -470,7 +470,7 @@ namespace overlay
         }
     }
 
-    inline void lazy_snap_ceil(float& cur, float next)
+    inline void LazySnapCeil(float& cur, float next)
     {
         constinit static auto snap = 100.f;
         constinit static auto buffer = 100.f;
@@ -486,7 +486,7 @@ namespace overlay
     }
 
     template<class NodeImpl>
-    inline void update(Layer& layer, NodeImpl &node, bool sticky, bool lazySnap = false)
+    inline void Update(Layer& layer, NodeImpl &node, bool sticky, bool lazySnap = false)
     {
 
         constinit static auto snap = 100.f;
@@ -501,7 +501,7 @@ namespace overlay
         auto rect = initial;
         NodeLayoutVisitor{rect}(node);
 
-        auto& bounds = get_layer_bounds(layer);
+        auto& bounds = GetLayerBounds(layer);
 
         if (rect == initial)
         {
@@ -510,10 +510,10 @@ namespace overlay
         }
         else if (lazySnap)
         {
-            lazy_snap_floor(bounds.left, rect.left);
-            lazy_snap_floor(bounds.top, rect.top);
-            lazy_snap_ceil(bounds.right, rect.right);
-            lazy_snap_ceil(bounds.bottom, rect.bottom);
+            LazySnapFloor(bounds.left, rect.left);
+            LazySnapFloor(bounds.top, rect.top);
+            LazySnapCeil(bounds.right, rect.right);
+            LazySnapCeil(bounds.bottom, rect.bottom);
         }
         else
         {
@@ -523,13 +523,13 @@ namespace overlay
             bounds.bottom = snap * std::ceil(rect.bottom / snap);
         }
 
-        auto frame = overlay::frame(layer, sticky, bounds);
-        if (!overlay::drawable(frame))
+        auto frame = overlay::CreateFrame(layer, sticky, bounds);
+        if (!overlay::Drawable(frame))
             return;
 
         NodeDrawVisitor{frame}(node);
 
-        overlay::push(frame);
+        overlay::Push(frame);
     }
 }
 
