@@ -15,174 +15,182 @@
 #include <queue>
 #include <unordered_map>
 
-namespace overlay_ui {
-  
-  // --------------------------------------- //
-  // ------------- Icon Loader ------------- //
-  // --------------------------------------- //
+namespace overlay_ui
+{
 
-  struct IconRequest {
-    std::string path;
-    bool silent;
-    std::shared_ptr<IconFuture> future;
-    std::condition_variable cv;
-  };
+    // --------------------------------------- //
+    // ------------- Icon Loader ------------- //
+    // --------------------------------------- //
 
-  // struct CachedIcon {
-  //   win::ComPtr<win::d2d1::Bitmap> icon;
-  //   size_t age;
+    struct IconRequest
+    {
+        std::string path;
+        bool silent;
+        std::shared_ptr<IconFuture> future;
+        std::condition_variable cv;
+    };
 
-  //   ~CachedIcon();
-  // };
+    // struct CachedIcon {
+    //   win::ComPtr<win::d2d1::Bitmap> icon;
+    //   size_t age;
+
+    //   ~CachedIcon();
+    // };
 
 
-  // Worker thread style IconLoading
-  // TODO: Implement icon unloading!
-  class IconLoader {
-    std::mutex mutex;
-    std::condition_variable cv;
-    std::queue<std::shared_ptr<IconRequest>> queue;
-    std::vector<std::thread> threads;
-    // std::unordered_map<std::string, CachedIcon> icons;
-    std::unordered_map<std::string, std::shared_ptr<IconFuture>> icons;
-    size_t version;
-    win::d2d1::DCRenderTarget *render_target;
-    Stage *stage{nullptr};
-    bool block_wait{true};
+    // Worker thread style IconLoading
+    // TODO: Implement icon unloading!
+    class IconLoader
+    {
+        std::mutex mutex;
+        std::condition_variable cv;
+        std::queue<std::shared_ptr<IconRequest>> queue;
+        std::vector<std::thread> threads;
+        // std::unordered_map<std::string, CachedIcon> icons;
+        std::unordered_map<std::string, std::shared_ptr<IconFuture>> icons;
+        size_t version;
+        win::d2d1::DCRenderTarget *render_target;
+        Stage *stage{nullptr};
+        bool block_wait{true};
 
-    std::thread worker();
-  public:
-    win::HWnd hWnd;
+        std::thread worker();
+    public:
+        win::HWnd hWnd;
 
-    IconLoader();
-    ~IconLoader();
-    std::shared_ptr<IconFuture> load(std::string path, bool silent = false);
-    void newFrame(Frame& frame);
-    void clear();
-  };
+        IconLoader();
+        ~IconLoader();
+        std::shared_ptr<IconFuture> load(std::string path, bool silent = false);
+        void newFrame(Frame& frame);
+        void clear();
+    };
 
-  // ------------- //
-  // --- Layer --- //
-  // ------------- //
+    // ------------- //
+    // --- Layer --- //
+    // ------------- //
 
-  struct Layer {
-    Stage *stage;
-    win::HWnd hWnd;
-    Rect bounds;
+    struct Layer
+    {
+        Stage *stage;
+        win::HWnd hWnd;
+        Rect bounds;
 
-    void hide();
-    void focus();
-  };
+        void hide();
+        void focus();
+    };
 
-  // ------------- //
-  // --- Frame --- //
-  // ------------- //
+    // ------------- //
+    // --- Frame --- //
+    // ------------- //
 
-  struct Frame {
-    size_t version;
-    win::d2d1::DCRenderTarget* render_target;
-    win::gdi::HDeviceContext hdc;
-    Vec screen_pos;
-    Layer *layer;
-    Stage *stage;
+    struct Frame
+    {
+        size_t version;
+        win::d2d1::DCRenderTarget* render_target;
+        win::gdi::HDeviceContext hdc;
+        Vec screen_pos;
+        Layer *layer;
+        Stage *stage;
 
-    bool sticky;
-    Rect bounds;
-    win::Rect rect;
-    win::gdi::HDeviceContext hdc_screen;
-    win::gdi::HBitmap bitmap;
-    win::gdi::HBitmap bitmap_old;
-    
-    bool drawing{false};
-    
-    Frame(Layer *layer, bool sticky, Rect bounds);
-    ~Frame();
+        bool sticky;
+        Rect bounds;
+        win::Rect rect;
+        win::gdi::HDeviceContext hdc_screen;
+        win::gdi::HBitmap bitmap;
+        win::gdi::HBitmap bitmap_old;
 
-    bool canDraw();
-    void push();
+        bool drawing{false};
 
-    void box(
-      const Node& node, 
-      Color bg);
+        Frame(Layer *layer, bool sticky, Rect bounds);
+        ~Frame();
 
-    void box(
-      const Node& node, 
-      Color bg, 
-      Color border, 
-      float border_width);
+        bool canDraw();
+        void push();
 
-    void box(
-      const Node& node, 
-      Color bg, 
-      float corner_radius);
+        void box(
+            const Node& node,
+            Color bg);
 
-    void box(
-      const Node& node, 
-      Color bg, 
-      Color border, 
-      float border_width, 
-      float corner_radius);
-  };
+        void box(
+            const Node& node,
+            Color bg,
+            Color border,
+            float border_width);
 
-  // ------------- //
-  // --- Stage --- //
-  // ------------- //
+        void box(
+            const Node& node,
+            Color bg,
+            float corner_radius);
 
-  class Stage {
-  public:
-    win::ComPtr<win::d2d1::Factory> d2d1;
-    win::ComPtr<win::dwrite::Factory> dwrite;
-    win::ComPtr<win::wic::Factory> wic;
+        void box(
+            const Node& node,
+            Color bg,
+            Color border,
+            float border_width,
+            float corner_radius);
+    };
 
-    win::TrackMouseEvent mouse_track;
-    win::HInstance instance{nullptr};
-    std::vector<std::unique_ptr<Layer>> layers;
-    std::optional<Vec> mouse_pos;
+    // ------------- //
+    // --- Stage --- //
+    // ------------- //
 
-    size_t render_target_version{0};
-    win::ComPtr<win::d2d1::DCRenderTarget> render_target;
-    win::ComPtr<win::d2d1::SolidColorBrush> brush;
+    class Stage
+    {
+    public:
+        win::ComPtr<win::d2d1::Factory> d2d1;
+        win::ComPtr<win::dwrite::Factory> dwrite;
+        win::ComPtr<win::wic::Factory> wic;
 
-    Node screen;
+        win::TrackMouseEvent mouse_track;
+        win::HInstance instance{nullptr};
+        std::vector<std::unique_ptr<Layer>> layers;
+        std::optional<Vec> mouse_pos;
 
-    win::Guid guid;
-    win::HIcon icon;
-    IconLoader icon_loader;
+        size_t render_target_version{0};
+        win::ComPtr<win::d2d1::DCRenderTarget> render_target;
+        win::ComPtr<win::d2d1::SolidColorBrush> brush;
 
-    std::function<void(const Event&)> event_handler;
+        Node screen;
 
-    size_t next_uid{1};
+        win::Guid guid;
+        win::HIcon icon;
+        IconLoader icon_loader;
 
-    bool debug{false};
+        std::function<void(const Event&)> event_handler;
 
-    static win::LResult __stdcall WndProc(win::HWnd hWnd, win::UInt msg, win::WParam wParam, win::LParam lParam);
-    win::LResult HandleMessage(win::HWnd hWnd, win::UInt msg, win::WParam wParam, win::LParam lParam);
+        size_t next_uid{1};
 
-    Stage();
-    ~Stage();
-    void initDirectX();
-    int initWin32();
-    int createWindow();
-    void updateScreens();
-    void createTrayIcon(std::string_view tooltip);
+        bool debug{false};
 
-    size_t getUID();
+        static win::LResult __stdcall WndProc(win::HWnd hWnd, win::UInt msg, win::WParam wParam, win::LParam lParam);
+        win::LResult HandleMessage(win::HWnd hWnd, win::UInt msg, win::WParam wParam, win::LParam lParam);
 
-    bool bindDC(win::gdi::HDeviceContext hdc, win::Rect &rc);
+        Stage();
+        ~Stage();
+        void initDirectX();
+        int initWin32();
+        int createWindow();
+        void updateScreens();
+        void createTrayIcon(std::string_view tooltip);
 
-    Layer* layer(int id) {
-      return layers[id].get();
-    }
-    
-    int run(std::function<void(const Event&)> event_handler);
-    void quit(int);
+        size_t getUID();
 
-    void sendEvent(Event&& event) {
-      if (event_handler) event_handler(event);
-    }
-  };
+        bool bindDC(win::gdi::HDeviceContext hdc, win::Rect &rc);
 
-  int Start(std::function<void(Event&)> callback);
+        Layer* layer(int id)
+        {
+            return layers[id].get();
+        }
+
+        int run(std::function<void(const Event&)> event_handler);
+        void quit(int);
+
+        void sendEvent(Event&& event)
+        {
+            if (event_handler) event_handler(event);
+        }
+    };
+
+    int Start(std::function<void(Event&)> callback);
 }
 
 #endif // !OVERLAY_WIN_H

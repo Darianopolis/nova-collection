@@ -3,29 +3,54 @@
 #define SCOPE_GUARDS_H
 
 template<typename Fn>
-class OnScopeExit {
-  Fn fn;
+class OnScopeExit
+{
+    Fn fn;
 public:
-  OnScopeExit(Fn fn): fn(std::move(fn)) {}
-  ~OnScopeExit() { fn(); }
+    OnScopeExit(Fn fn)
+        : fn(std::move(fn))
+    {}
+
+    ~OnScopeExit()
+    {
+        fn();
+    }
 };
 
 template<typename Fn>
-class OnScopeSuccess {
-  Fn fn;
-  int exceptions;
+class OnScopeSuccess
+{
+    Fn fn;
+    int exceptions;
 public:
-  OnScopeSuccess(Fn fn): fn(std::move(fn)), exceptions(std::uncaught_exceptions()) {}
-  ~OnScopeSuccess() { if (std::uncaught_exceptions() <= exceptions) fn(); }
+    OnScopeSuccess(Fn fn)
+        : fn(std::move(fn))
+        , exceptions(std::uncaught_exceptions())
+    {}
+
+    ~OnScopeSuccess()
+    {
+        if (std::uncaught_exceptions() <= exceptions)
+            fn();
+    }
 };
 
 template<typename Fn>
-class OnScopeFailure {
-  Fn fn;
-  int exceptions;
+class OnScopeFailure
+{
+    Fn fn;
+    int exceptions;
 public:
-  OnScopeFailure(Fn fn): fn(std::move(fn)), exceptions(std::uncaught_exceptions()) {}
-  ~OnScopeFailure() { if (std::uncaught_exceptions() > exceptions) fn(); }
+    OnScopeFailure(Fn fn)
+        : fn(std::move(fn))
+        , exceptions(std::uncaught_exceptions())
+    {}
+
+    ~OnScopeFailure()
+    {
+        if (std::uncaught_exceptions() > exceptions)
+            fn();
+    }
 };
 
 #define COMMON_CONCAT2(a, b) a##b

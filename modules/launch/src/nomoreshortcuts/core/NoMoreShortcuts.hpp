@@ -21,122 +21,131 @@ namespace ui = overlay_ui;
 
 class App;
 
-class LaunchItem : public ui::NodeImpl<LaunchItem> {
+class LaunchItem : public ui::NodeImpl<LaunchItem>
+{
 public:
-  ui::Text nameText;
-  ui::Text pathText;
-  ui::Box box;
-  ui::Icon icon;
-  ui::Stage* stage;
+    ui::Text nameText;
+    ui::Text pathText;
+    ui::Box box;
+    ui::Icon icon;
+    ui::Stage* stage;
 
-  std::unique_ptr<ResultItem> view;
+    std::unique_ptr<ResultItem> view;
 
-  LaunchItem(App& app, std::unique_ptr<ResultItem> view);
+    LaunchItem(App& app, std::unique_ptr<ResultItem> view);
 
-  void setPath(std::unique_ptr<ResultItem> newView);
+    void setPath(std::unique_ptr<ResultItem> newView);
 
-  template<class NodeVisitor>
-  void traverse(NodeVisitor& visit) {
-    visit(box);
-    visit(nameText);
-    visit(pathText);
-    visit(icon);
-  }
+    template<class NodeVisitor>
+    void traverse(NodeVisitor& visit)
+    {
+        visit(box);
+        visit(nameText);
+        visit(pathText);
+        visit(icon);
+    }
 };
 
-class ContextMenu : public ui::NodeImpl<ContextMenu> {
+class ContextMenu : public ui::NodeImpl<ContextMenu>
+{
 public:
-  ui::Box box;
-  ui::Box highlight;
-  ui::Text closeText;
-  ui::Stage *stage;
+    ui::Box box;
+    ui::Box highlight;
+    ui::Text closeText;
+    ui::Stage *stage;
 
-  ContextMenu(App& app);
+    ContextMenu(App& app);
 
-  template<class NodeVisitor>
-  inline void traverse(NodeVisitor& visit) {
-    if (visible) {
-      visit(box);
-      visit(highlight);
-      visit(closeText);
+    template<class NodeVisitor>
+    inline void traverse(NodeVisitor& visit)
+    {
+        if (visible)
+        {
+            visit(box);
+            visit(highlight);
+            visit(closeText);
+        }
     }
-  }
 };
 
-class App : public ui::NodeImpl<App> {
+class App : public ui::NodeImpl<App>
+{
 public:
 
-  ui::Font nameFont{"Sans Serif", 35};
-  ui::Font pathFont{"Sans Serif", 18};
-  ui::Font menuFont{"Sans Serif", 24};
+    ui::Font nameFont{"Sans Serif", 35};
+    ui::Font pathFont{"Sans Serif", 18};
+    ui::Font menuFont{"Sans Serif", 24};
 
-  float queryWidth = 1920;
-  float itemWidth = 1200;
-  float corner = 15;
+    float queryWidth = 1920;
+    float itemWidth = 1200;
+    float corner = 15;
 
-  ui::Color HighlightColour{0.4, 0.2};
-  ui::Color TextColour{1};
-  ui::Color Transparent{0, 0};
-  ui::Color BorderColour{0.4, 0.5};
-  ui::Color BgColour{0.1};
+    ui::Color HighlightColour{0.4, 0.2};
+    ui::Color TextColour{1};
+    ui::Color Transparent{0, 0};
+    ui::Color BorderColour{0.4, 0.5};
+    ui::Color BgColour{0.1};
 
-  ui::Stage *stage;
+    ui::Stage *stage;
 
-  ui::Box queryBox;
-  
-  std::vector<std::string> keywords;
-  ui::Text queryText;
-  ui::Box resultsBox;
+    ui::Box queryBox;
 
-  std::vector<std::unique_ptr<LaunchItem>> items;
-  uint32_t selection;
+    std::vector<std::string> keywords;
+    ui::Text queryText;
+    ui::Box resultsBox;
 
-  std::unique_ptr<FileResultList> fileResultList;
-  std::unique_ptr<FavResultList> favResultList;
-  std::unique_ptr<ResultListPriorityCollector> resultList;
+    std::vector<std::unique_ptr<LaunchItem>> items;
+    uint32_t selection;
 
-  ContextMenu menu;
+    std::unique_ptr<FileResultList> fileResultList;
+    std::unique_ptr<FavResultList> favResultList;
+    std::unique_ptr<ResultListPriorityCollector> resultList;
 
-  bool show;
+    ContextMenu menu;
 
-  ui::Layer *mainLayer;
-  ui::Layer *menuLayer;
+    bool show;
 
-  int updates = 0;
-  std::chrono::time_point<std::chrono::steady_clock> last_update;
+    ui::Layer *mainLayer;
+    ui::Layer *menuLayer;
 
-  App(ui::Stage *stage);
+    int updates = 0;
+    std::chrono::time_point<std::chrono::steady_clock> last_update;
 
-  void resetItems(bool end = false);
+    App(ui::Stage *stage);
 
-  void fixItemAnchors();
+    void resetItems(bool end = false);
 
-  template<class NodeVisitor>
-  inline void traverse(NodeVisitor& visit) {
-    if (show) {
-      visit(queryBox);
-      visit(resultsBox);
-      visit(queryText);
-      for (auto& i : items) visit(*i);
+    void fixItemAnchors();
+
+    template<class NodeVisitor>
+    inline void traverse(NodeVisitor& visit)
+    {
+        if (show)
+        {
+            visit(queryBox);
+            visit(resultsBox);
+            visit(queryText);
+            for (auto& i : items)
+                visit(*i);
+        }
+        visit(menu);
     }
-    visit(menu);
-  }
 
-  void resetQuery();
+    void resetQuery();
 
-  void update();
+    void update();
 
-  std::string join_query();
+    std::string join_query();
 
-  void updateQuery();
+    void updateQuery();
 
-  void move(int delta);
+    void move(int delta);
 
-  bool moveSelectedUp();
+    bool moveSelectedUp();
 
-  bool moveSelectedDown();
+    bool moveSelectedDown();
 
-  void onEvent(const ui::Event &e);
+    void onEvent(const ui::Event &e);
 };
 
 int AppMain();
