@@ -149,33 +149,11 @@ App::App(overlay::Stage* stage)
 
     using namespace std::chrono;
 
-    auto begin = steady_clock::now();
-    // tree = PathTree::load(getenv("USERPROFILE") + std::string("\\.nms\\tree.bin"));
-    // index = std::make_unique<Index>(getenv("USERPROFILE") + std::string("\\.nms\\tree.bin"));
-    auto dur = duration_cast<milliseconds>(steady_clock::now() - begin).count();
-
-    // tree.setMatchBits(1, 1, 0, 0);
-    // tree.matchBits = 1;
-    // tree.useInheritMatch = true;
-
     resultList = std::make_unique<ResultListPriorityCollector>();
     favResultList = std::make_unique<FavResultList>(&keywords);
     fileResultList = std::make_unique<FileResultList>(favResultList.get());
     resultList->AddList(favResultList.get());
     resultList->AddList(fileResultList.get());
-
-    // std::cout << std::format("loaded {} nodes in {} ms\n", fileResultList.tree.nodes.size(), dur);
-
-    // collator = UnicodeCollator::new_ascii_collator();
-
-    // index = std::make_unique<Index>(&index->tree, collator.get());
-
-    // auto first = tree.next(nullptr);
-    // auto count = 0;
-    // while (count++ < 10 && first) {
-    //   std::cout << std::format("{} - {}\n", count, first->path().string());
-    //   first = tree.next(&*first);
-    // }
 
     show = false;
     menu.visible = false;
@@ -206,7 +184,7 @@ void App::ResetItems(bool end)
             }
             std::reverse(items.begin(), items.end());
         }
-        selection = items.size() - 1;
+        selection = (uint32_t)items.size() - 1;
     }
     else
     {
@@ -507,7 +485,7 @@ void App::OnEvent(const overlay::Event &e)
                     ResetQuery();
                 } else {
                     auto& keyword = keywords[keywords.size() - 1];
-                    auto matchBit = static_cast<uint8_t>(1 << (keywords.size() - 1));
+                    [[maybe_unused]] auto matchBit = static_cast<uint8_t>(1 << (keywords.size() - 1));
                     if (keyword.length() > 0) {
                         keyword.pop_back();
                         // filter(matchBit, keyword, false);
@@ -550,7 +528,7 @@ void App::OnEvent(const overlay::Event &e)
                     {
                         std::thread t([=, this] {
                             AllocConsole();
-                            auto handle = freopen("CONOUT$", "w", stdout);
+                            freopen("CONOUT$", "w", stdout);
 
                             std::vector<char> drives;
                             wchar_t driveNames[1024];
@@ -593,7 +571,7 @@ void App::OnEvent(const overlay::Event &e)
                 auto& keyword = keywords[keywords.size() - 1];
                 if (c == ' ') {
                     if (keyword.size() == 0 || keywords.size() == 8) return;
-                    auto set = static_cast<uint8_t>(1 << keywords.size());
+                    [[maybe_unused]] auto set = static_cast<uint8_t>(1 << keywords.size());
                     // tree.setMatchBits(set, set, set, 0);
                     // tree.matchBits |= set;
                     keywords.push_back("");
@@ -629,7 +607,7 @@ void App::OnEvent(const overlay::Event &e)
 // ------------------------------------------------------------------------- //
 // ------------------------------------------------------------------------- //
 
-int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, int nCmdShow)
+int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
 {
 // int main() {
     try

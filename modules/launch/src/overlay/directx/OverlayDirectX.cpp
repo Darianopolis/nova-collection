@@ -184,7 +184,7 @@ namespace overlay
 
     IconLoader::~IconLoader()
     {
-        for (auto& t : threads)
+        for (uint32_t i = 0; i < threads.size(); ++i)
         {
             std::lock_guard lock { mutex };
             queue.push(std::make_shared<IconRequest>("", false, nullptr));
@@ -262,7 +262,7 @@ namespace overlay
     // ------------- Events ------------- //
     // ---------------------------------- //
 
-    bool KeyDown(const Event& event, KeyCode code)
+    bool KeyDown(const Event&, KeyCode code)
     {
         auto state = GetAsyncKeyState(static_cast<int>(code));
         return (1 << 15) & state;
@@ -338,8 +338,8 @@ namespace overlay
         if (stage->debug)
         {
             auto brush = ComPtr<ID2D1SolidColorBrush>{};
-            renderTarget->CreateSolidColorBrush(D2D1::ColorF(0,0,0,1), brush.GetAddressOf());
-            renderTarget->DrawRectangle(D2D1::RectF(0, 0, width, height), brush.Get(), 5);
+            renderTarget->CreateSolidColorBrush(D2D1::ColorF(0.f, 0.f, 0.f, 1.f), brush.GetAddressOf());
+            renderTarget->DrawRectangle(D2D1::RectF(0.f, 0.f, (float)width, (float)height), brush.Get(), 5.f);
         }
 
         // Draw bitmap to window and update Layer bounds
@@ -363,7 +363,7 @@ namespace overlay
             std::cout << "showing window!\n";
             ShowWindow(layer->hWnd, 1);
         }
-        auto toFront = SetWindowPos(
+        SetWindowPos(
             layer->hWnd,
             sticky ? HWND_TOPMOST : HWND_NOTOPMOST,
             0, 0, 0, 0,
@@ -385,7 +385,7 @@ namespace overlay
     // ------------- Color ------------- //
     // --------------------------------- //
 
-    inline ID2D1SolidColorBrush* get_brush(const Frame& frame, Color c)
+    inline ID2D1SolidColorBrush* GetBrush(const Frame& frame, Color c)
     {
         frame.stage->brush->SetColor(D2D1::ColorF(c.r, c.g, c.b, c.a));
         return frame.stage->brush.Get();
@@ -411,8 +411,8 @@ namespace overlay
                     p.x + node.size.x + hBSize,
                     p.y + node.size.y + hBSize),
                 cornerRadius + hBSize, cornerRadius + hBSize),
-            get_brush(*this, border),
-            borderWidth + 0.2);
+            GetBrush(*this, border),
+            borderWidth + 0.2f);
 
         renderTarget->FillRoundedRectangle(
             D2D1::RoundedRect(
@@ -422,7 +422,7 @@ namespace overlay
                     p.x + node.size.x,
                     p.y + node.size.y),
                 cornerRadius, cornerRadius),
-            get_brush(*this, bg));
+            GetBrush(*this, bg));
     }
 
     // --------------------------------- //
@@ -864,8 +864,8 @@ namespace overlay
                         p.y - hBSize,
                         p.x + size.x + hBSize,
                         p.y + size.y + hBSize),
-                    get_brush(context, border),
-                    borderWidth);
+                    GetBrush(context, border),
+                    (float)borderWidth);
             }
             else
             {
@@ -877,8 +877,8 @@ namespace overlay
                             p.x + size.x + hBSize,
                             p.y + size.y + hBSize),
                         cornerRadius + hBSize, cornerRadius + hBSize),
-                    get_brush(context, border),
-                    borderWidth + 0.2);
+                    GetBrush(context, border),
+                    (float)borderWidth + 0.2f);
             }
         }
 
@@ -890,7 +890,7 @@ namespace overlay
                     p.y,
                     p.x + size.x,
                     p.y + size.y),
-                get_brush(context, background));
+                GetBrush(context, background));
         }
         else
         {
@@ -901,8 +901,8 @@ namespace overlay
                     p.y,
                     p.x + size.x,
                     p.y + size.y),
-                cornerRadius, cornerRadius),
-            get_brush(context, background));
+                (float)cornerRadius, (float)cornerRadius),
+            GetBrush(context, background));
         }
     }
 
@@ -914,8 +914,8 @@ namespace overlay
 
     void Icon::Reposition(Rect& bounds)
     {
-        size.x = GetSystemMetrics(SM_CXICON);
-        size.y = GetSystemMetrics(SM_CYICON);
+        size.x = (float)GetSystemMetrics(SM_CXICON);
+        size.y = (float)GetSystemMetrics(SM_CYICON);
         static_cast<Node*>(this)->Reposition(bounds);
     }
 
@@ -1065,7 +1065,7 @@ namespace overlay
 
         pDWriteFactory->CreateTextLayout(
             wString.c_str(),
-            wString.length(),
+            (uint32_t)wString.length(),
             format,
             bounds.x, bounds.y,
             cache.layout.ReleaseAndGetAddressOf());
@@ -1110,7 +1110,7 @@ namespace overlay
         if (lines == metrics.lineCount)
         {
             topBaseline += lineMetrics[0].baseline;
-            for (auto i = 0; i < lines - 1; ++i)
+            for (uint32_t i = 0; i < lines - 1; ++i)
             {
                 auto& lm = lineMetrics[i];
                 bottomBaseline += lm.height;
@@ -1183,7 +1183,7 @@ namespace overlay
         pRenderTarget->DrawTextLayout(
             D2D1::Point2F(tp.x, tp.y),
             cache.layout.Get(),
-            get_brush(context, color));
+            GetBrush(context, color));
     }
 
     int Start(std::function<void(const Event&)> callback)

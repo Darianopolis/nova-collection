@@ -149,7 +149,7 @@ public:
     {
         // Fix view
         view = { data.begin(), data.end() };
-        uint32_t size = nodes.size();
+        auto size = nodes.size();
 
         // Create a temporary structure to remember the old index after sorting.
         struct SortNode {
@@ -159,9 +159,9 @@ public:
         std::vector<SortNode> toSort(size);
 
 #pragma omp parallel for
-        for (long i = 0; i < size; ++i)
+        for (uint32_t i = 0; i < size; ++i)
         {
-            toSort[i] = { static_cast<uint32_t>(i), nodes[i] };
+            toSort[i] = { i, nodes[i] };
         }
 
         // Sort temporary
@@ -175,14 +175,14 @@ public:
         // Compute mapping of old indexes to new indexes
         std::vector<uint32_t> indexRemap(size);
 #pragma omp parallel for
-        for (long i = 0; i < size; ++i)
+        for (uint32_t i = 0; i < size; ++i)
         {
             indexRemap[toSort[i].oldIndex] = i;
         }
 
         // Copy nodes back into permanent structure, with correct parent indexes
 #pragma omp parallel for
-        for (long i = 0; i < size; ++i)
+        for (uint32_t i = 0; i < size; ++i)
         {
             PathNode& node = toSort[i].node;
             nodes[i] = node;
@@ -208,7 +208,7 @@ public:
 
         try
         {
-            int i = parents.size() - 1;
+            int i = int(parents.size()) - 1;
             std::filesystem::path path = NodePath(*parents[i--]);
             while (i >= 0)
                 path /= NodePath(*parents[i--]);
@@ -223,13 +223,13 @@ public:
     std::optional<PathView> Next(const PathView* current)
     {
         int64_t i = current ? current->index + 1 : 0;
-        size_t max = nodes.size();
+        int64_t max = (int64_t)nodes.size();
 
         while (i < max)
         {
             if (CheckMatch(nodes[i], matchBits, useInheritMatch))
             {
-                auto path = MakePathViewForNode(nodes[i], i);
+                auto path = MakePathViewForNode(nodes[i], (uint32_t)i);
                 if (path)
                     return path;
             }
@@ -247,7 +247,7 @@ public:
         {
             if (CheckMatch(nodes[i], matchBits, useInheritMatch))
             {
-                auto path = MakePathViewForNode(nodes[i], i);
+                auto path = MakePathViewForNode(nodes[i], (uint32_t)i);
                 if (path)
                     return path;
             }
@@ -276,6 +276,8 @@ public:
 
     void MatchLazy(uint8_t matchCheck, uint8_t matchBit, std::function<bool(std::string_view)>&& test)
     {
+        (void)matchCheck;
+
         view = { data.begin(), data.end() };
         std::for_each(std::execution::par_unseq, nodes.begin(), nodes.end(), [&](PathNode& p) {
 
@@ -390,9 +392,9 @@ public:
         }
     }
 
-    bool CheckMatch(const PathNode& p, uint8_t matchBits, bool includeInherited)
+    bool CheckMatch(const PathNode& p, uint8_t _matchBits, bool includeInherited)
     {
-        return ((includeInherited ? (p.match | p.inheritedMatch) : p.match) & matchBits) == matchBits;
+        return ((includeInherited ? (p.match | p.inheritedMatch) : p.match) & _matchBits) == _matchBits;
     }
 
     ///////////////////////////////////////
@@ -430,7 +432,7 @@ public:
         std::ofstream out(file, std::ios::out | std::ios::binary);
         if (out)
         {
-            const uint32_t pathCount = nodes.size();
+            auto pathCount = (uint32_t)nodes.size();
             out.write(reinterpret_cast<const char*>(&pathCount), sizeof(uint32_t));
             out.write(reinterpret_cast<const char*>(&nodes[0]), sizeof(PathNode) * pathCount);
             out.write(&data[0], data.size());
@@ -493,14 +495,14 @@ public:
             if (!existing)
             {
                 auto r = std::unique_ptr<TreeNode>(new TreeNode{nullptr, std::string(s)});
-                graph[i] = r.get();
+                graph[(uint32_t)i] = r.get();
                 sorted.push_back(r.get());
                 roots.push_back(std::move(r));
             }
             else
             {
                 auto r = std::unique_ptr<TreeNode>(new TreeNode{existing, std::string(s)});
-                graph[i] = r.get();
+                graph[(uint32_t)i] = r.get();
                 sorted.push_back(r.get());
                 existing->children.push_back(std::move(r));
             }

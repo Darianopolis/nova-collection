@@ -14,9 +14,9 @@ std::unique_ptr<UnicodeCollator> UnicodeCollator::NewAsciiCollator()
 
     for (int a = 0; a < 128; ++a)
     {
-        utf8Lookup[a] = std::tolower(a);
+        utf8Lookup[a] = (char)std::tolower(a);
         for (int b = 0; b < 256; ++b)
-            utf8Lookup[(static_cast<char16_t>(a) << 8) + b] = std::tolower(a);
+            utf8Lookup[(static_cast<char16_t>(a) << 8) + b] = (char)std::tolower(a);
     }
 
     const std::string changers[] {
@@ -38,7 +38,7 @@ std::unique_ptr<UnicodeCollator> UnicodeCollator::NewAsciiCollator()
 
     for (const std::string& l : changers)
     {
-        const char to = std::tolower(l[0]);
+        const char to = (char)std::tolower(l[0]);
         for (int i = 1; i < l.length(); i += 25)
         {
             const int codepoint = ((unsigned char)l[i] << 8) + (unsigned char)l[i + 1];
@@ -61,7 +61,7 @@ std::string UnicodeCollator::ConvertToPlainAscii(const std::string& value) const
     size_t i = 0;
     while (i < len)
     {
-        unsigned char c = value[i];
+        unsigned char c = (unsigned char)value[i];
         if (c > 127)
         {
             out.push_back('?');
@@ -102,16 +102,16 @@ bool UnicodeCollator::Compare(const std::string_view& value, size_t& index, cons
 
 bool UnicodeCollator::FuzzyFind(const std::string_view& value, const std::string& str) const
 {
-    const size_t value_count = value.length();
-    const size_t str_count = str.length();
+    const size_t valueCount = value.length();
+    const size_t strCount = str.length();
 
-    if (str_count > value_count)
+    if (strCount > valueCount)
         return false;
-    if (str_count == 0)
+    if (strCount == 0)
         return true;
 
     const char first = str[0];
-    const size_t max = value_count - str_count;
+    const size_t max = valueCount - strCount;
 
     for (size_t i = 0; i <= max; ++i)
     {
@@ -123,8 +123,8 @@ bool UnicodeCollator::FuzzyFind(const std::string_view& value, const std::string
         if (i <= max)
         {
             size_t j = i + 1;
-            const size_t true_end = j + str_count - 1;
-            const size_t end = (value_count > true_end) ? true_end : value_count;
+            const size_t true_end = j + strCount - 1;
+            const size_t end = (valueCount > true_end) ? true_end : valueCount;
             for (size_t k = 1
                 ; j < end && this->Compare(value, j, str[k])
                 ; ++j, ++k);

@@ -254,12 +254,12 @@ public:
         CheckSql(sqlite3_open(appDb.c_str(), &db), db);
 
         CheckSql(sqlite3_prepare_v2(db, "INSERT OR IGNORE INTO favourites(path, uses) VALUES (?, 0);", -1, &stmt, nullptr), db);
-        CheckSql(sqlite3_bind_text(stmt, 1, str.c_str(), str.size(), SQLITE_TRANSIENT), db);
+        CheckSql(sqlite3_bind_text(stmt, 1, str.c_str(), (int)str.size(), SQLITE_TRANSIENT), db);
         CheckSql(sqlite3_step(stmt), db);
         CheckSql(sqlite3_finalize(stmt), db);
 
         CheckSql(sqlite3_prepare_v2(db, "UPDATE favourites SET uses = uses + 1 WHERE path = ?", -1, &stmt, nullptr), db);
-        CheckSql(sqlite3_bind_text(stmt, 1, str.c_str(), str.size(), SQLITE_TRANSIENT), db);
+        CheckSql(sqlite3_bind_text(stmt, 1, str.c_str(), (int)str.size(), SQLITE_TRANSIENT), db);
         CheckSql(sqlite3_step(stmt), db);
 
         sqlite3_finalize(stmt);
@@ -283,7 +283,7 @@ public:
         CheckSql(sqlite3_open(appDb.c_str(), &db), db);
 
         CheckSql(sqlite3_prepare_v2(db, "DELETE FROM favourites WHERE path = ?", -1, &stmt, nullptr), db);
-        CheckSql(sqlite3_bind_text(stmt, 1, str.c_str(), str.size(), SQLITE_TRANSIENT), db);
+        CheckSql(sqlite3_bind_text(stmt, 1, str.c_str(), (int)str.size(), SQLITE_TRANSIENT), db);
         CheckSql(sqlite3_step(stmt), db);
 
         sqlite3_finalize(stmt);
@@ -292,8 +292,7 @@ public:
             Load();
     }
 
-    void Query(QueryAction action, std::string_view query) final
-    {}
+    void Query(QueryAction, std::string_view) final {}
 
     bool Filter(const std::filesystem::path& path)
     {
@@ -385,13 +384,10 @@ class FileResultItem : public ResultItem
     size_t index;
     std::filesystem::path path;
 public:
-    FileResultItem(std::filesystem::path&& _path, size_t index)
-        : index(index)
+    FileResultItem(std::filesystem::path&& _path, size_t _index)
+        : index(_index)
         , path(_path)
-    {
-        const char* a[] = { "aa", "bb" };
-        std::size(a);
-    }
+    {}
 
     virtual const std::filesystem::path& GetPath() const override
     {
@@ -404,14 +400,14 @@ class FileResultList : public ResultList
     // std::vector<std::unique_ptr<Node>> roots;
     // std::vector<NodeView> flat;
     NodeIndex index;
-    uint8_t match_bits;
+    uint8_t matchBits;
     FavResultList* favourites;
     std::vector<std::string> keywords;
     std::unique_ptr<UnicodeCollator> collator;
 public:
-    FileResultList(FavResultList* favourites)
-        : favourites(favourites)
-        , match_bits(0)
+    FileResultList(FavResultList* _favourites)
+        : favourites(_favourites)
+        , matchBits(0)
         , collator(UnicodeCollator::NewAsciiCollator())
     {
         using namespace std::chrono;
@@ -451,7 +447,7 @@ public:
 
         auto needle = std::string{keyword};
         std::transform(needle.begin(), needle.end(), needle.begin(), [](char c) {
-            return std::tolower(c);
+            return (char)std::tolower(c);
         });
 
         using namespace std::chrono;
@@ -507,7 +503,7 @@ public:
         return std::move(parent_str);
     }
 
-    void Query(QueryAction action, std::string_view _query)
+    void Query(QueryAction, std::string_view _query)
     {
         // std::cout << std::format("before query, match bits = {:08b}\n", match_bits);
         auto query = std::string(_query);
@@ -532,7 +528,7 @@ public:
                     p.match |= matchBit;
                     p.inheritedMatch &= ~matchBit;
                 });
-                match_bits |= matchBit;
+                matchBits |= matchBit;
                 Filter(matchBit, new_keywords[i], false);
             }
             else if (keywords[i] != new_keywords[i])
@@ -552,7 +548,7 @@ public:
                 p.match &= ~matchBit;
                 p.inheritedMatch &= ~matchBit;
             });
-            match_bits &= ~matchBit;
+            matchBits &= ~matchBit;
         }
 
         keywords = std::move(new_keywords);
@@ -566,10 +562,10 @@ public:
         while (i < index.nodes.size())
         {
             auto &node = index.nodes[i];
-            if (((node.match | node.inheritedMatch) & match_bits) == match_bits)
+            if (((node.match | node.inheritedMatch) & matchBits) == matchBits)
             {
                 // auto path = std::filesystem::path(flat[i].node->string());
-                auto path = std::filesystem::path(MakeString(i));
+                auto path = std::filesystem::path(MakeString((uint32_t)i));
                 if (!favourites->ContainsPath(path))
                     return std::make_unique<FileResultItem>(std::move(path), i);
             }
@@ -585,9 +581,9 @@ public:
         while (i != -1)
         {
             auto &node = index.nodes[i];
-            if (((node.match | node.inheritedMatch) & match_bits) == match_bits)
+            if (((node.match | node.inheritedMatch) & matchBits) == matchBits)
             {
-                auto path = std::filesystem::path(MakeString(i));
+                auto path = std::filesystem::path(MakeString((uint32_t)i));
                 if (!favourites->ContainsPath(path))
                     return std::make_unique<FileResultItem>(std::move(path), i);
             }
@@ -607,6 +603,6 @@ public:
         if (!current)
             return false;
         auto& node = index.nodes[current->index];
-        return ((node.match | node.inheritedMatch) & match_bits) == match_bits;
+        return ((node.match | node.inheritedMatch) & matchBits) == matchBits;
     }
 };

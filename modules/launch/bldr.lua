@@ -4,7 +4,6 @@ if Project "nms-v2" then
         "src/indexer/**",
         "src/overlay/*", -- Don't compile examples
         "src/overlay/directx/*",
-        "src/winwrap/**",
         "src/nomoreshortcuts/**",
     }
     Include {

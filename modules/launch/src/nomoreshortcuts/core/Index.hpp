@@ -33,14 +33,14 @@ struct Index
         tree.useInheritMatch = true;
     }
 
-    void filter(uint8_t matchBit, std::string_view keyword, bool lazy)
+    void Filter(uint8_t matchBit, std::string_view keyword, bool lazy)
     {
         // std::cout << "refiltering on keyword, [" << keyword << "] lazy = " << lazy << '\n';
         // std::cout << std::format("    match bit = {:08b}\n", matchBit);
 
         auto needle = std::string{keyword};
         std::transform(needle.begin(), needle.end(), needle.begin(), [](char c) {
-            return std::tolower(c);
+            return (char)std::tolower(c);
         });
 
         if (lazy)
@@ -57,20 +57,20 @@ struct Index
         }
     }
 
-    void query(std::string query)
+    void Query(std::string query)
     {
         // std::cout << std::format("before query, match bits = {:08b}\n", tree.matchBits);
         std::regex words{"\\S+"};
-        std::vector<std::string> new_keywords;
+        std::vector<std::string> newKeywords;
 
         {
             auto i = std::sregex_iterator(query.begin(), query.end(), words);
             auto end = std::sregex_iterator();
             for (; i != end; ++i)
-                new_keywords.push_back(i->str());
+                newKeywords.push_back(i->str());
         }
 
-        for (auto i = 0; i < new_keywords.size(); ++i)
+        for (auto i = 0; i < newKeywords.size(); ++i)
         {
             auto matchBit = static_cast<uint8_t>(1 << i);
             if (i >= keywords.size())
@@ -78,18 +78,18 @@ struct Index
                 // New keyword, update tree match bits
                 tree.SetMatchBits(matchBit, matchBit, matchBit, 0);
                 tree.matchBits |= matchBit;
-                filter(matchBit, new_keywords[i], false);
+                Filter(matchBit, newKeywords[i], false);
             }
-            else if (keywords[i] != new_keywords[i])
+            else if (keywords[i] != newKeywords[i])
             {
                 // Keyword change, refilter match column
                 // Memoized - Do a lazy match if new keyword contains the previous key
-                filter(matchBit, new_keywords[i], new_keywords[i].find(keywords[i]) != std::string::npos);
+                Filter(matchBit, newKeywords[i], newKeywords[i].find(keywords[i]) != std::string::npos);
             }
         }
 
         // Clear any remaining keywords!
-        for (auto i = new_keywords.size(); i < keywords.size(); ++i)
+        for (auto i = newKeywords.size(); i < keywords.size(); ++i)
         {
             // std::cout << "Clearing old keyword [" << keywords[i] << "]\n";
             auto matchBit = static_cast<uint8_t>(1 << i);
@@ -97,7 +97,7 @@ struct Index
             tree.matchBits &= ~matchBit;
         }
 
-        keywords = std::move(new_keywords);
+        keywords = std::move(newKeywords);
         // std::cout << std::format("  After query, match bits = {:08b}\n", tree.matchBits);
     }
 };

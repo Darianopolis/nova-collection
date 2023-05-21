@@ -49,16 +49,16 @@ struct WinIndexer
             if (len == 0 || (result.cFileName[0] == '.' && (len == 1 || (len == 2 && result.cFileName[1] == '.'))))
                 continue;
 
-            bool usedDefault = false;
+            BOOL usedDefault = FALSE;
             size_t utf8Len = WideCharToMultiByte(
                 CP_UTF8,
                 0,
                 result.cFileName,
-                len,
+                (int)len,
                 utf8Buffer,
-                sizeof(utf8Buffer) - 1,
+                (int)sizeof(utf8Buffer) - 1,
                 nullptr,
-                (LPBOOL)&usedDefault);
+                &usedDefault);
 
             if (utf8Len == 0)
             {
@@ -69,7 +69,7 @@ struct WinIndexer
             char* name = new char[utf8Len + 1];
             memcpy(name, utf8Buffer, utf8Len);
             name[utf8Len] = '\0';
-            Node* child = new Node(name, utf8Len, node, depth);
+            Node* child = new Node(name, (uint8_t)utf8Len, node, depth);
             node->AddChild(child);
 
             if (++count % 10000 == 0)
@@ -92,7 +92,7 @@ struct WinIndexer
 
 Node* IndexDrive(char driverLetter)
 {
-    char upper = std::toupper(driverLetter);
+    char upper = (char)std::toupper(driverLetter);
 
     std::cout << "Drive letter = " << upper << '\n';
 

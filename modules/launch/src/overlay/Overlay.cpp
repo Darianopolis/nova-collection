@@ -83,10 +83,10 @@ namespace overlay
     // ------------------------------- //
 
     Box::Box(Color bgColor, Color borderColor, float _borderWidth, float cornerRadius)
-        : borderWidth(_borderWidth)
+        : borderWidth((int)_borderWidth)
         , background(bgColor)
         , border(borderColor)
-        , cornerRadius(cornerRadius)
+        , cornerRadius((int)cornerRadius)
     {
         padding = Rect{_borderWidth, _borderWidth, _borderWidth, _borderWidth};
     }

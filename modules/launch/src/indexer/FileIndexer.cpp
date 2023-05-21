@@ -59,7 +59,7 @@ NodeIndex Flatten(std::vector<NodeView> nodes) {
     // Pre-assign indexes for each node (and sum str len for next step)
     // This allows for children to be sorted before their parent!
     size_t strLenTotal = 0;
-    for (size_t i = 0; i < nodes.size(); ++i)
+    for (uint32_t i = 0; i < nodes.size(); ++i)
     {
         nodes[i].node->index = i;
         strLenTotal += nodes[i].node->len;
@@ -76,11 +76,11 @@ NodeIndex Flatten(std::vector<NodeView> nodes) {
             ? view.node->parent->index
             : view.node->index;
 
-        auto str_offset = str.size();
+        auto strOffset = str.size();
         str.append(view.node->name);
 
         flattened.emplace_back(
-            (uint32_t)str_offset,
+            (uint32_t)strOffset,
             (uint32_t)parentIndex,
             view.node->depth,
             view.node->len);

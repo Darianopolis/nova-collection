@@ -260,13 +260,14 @@ namespace overlay
         Vec position { 0, 0 };
 
         Node(): visible(true) {}
+        virtual ~Node() {}
 
         virtual void Visit(NodeDrawVisitor&) {}
         virtual void Visit(NodeLayoutVisitor&) {}
 
         template<class NodeVisitor>
         inline void Traverse(NodeVisitor&) { }
-        inline void Draw(Frame& frame) { }
+        inline void Draw(Frame&) { }
 
         Vec PointAt(const Align alignTo) const
         {
@@ -345,7 +346,7 @@ namespace overlay
         int borderWidth = 0;
         int cornerRadius = 0;
 
-        Box(Color bg_color, Color border_color, float border_width, float corner_radius);
+        Box(Color bgColor, Color borderColor, float borderWidth, float cornerRadius);
         ~Box();
 
         void Draw(const Frame& context);
