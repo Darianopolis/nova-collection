@@ -9,7 +9,7 @@
 
 using namespace nova::types;
 
-int main()
+void TryMain()
 {
     glfwInit();
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
@@ -17,6 +17,10 @@ int main()
     glfwWindowHint(GLFW_DECORATED, GLFW_FALSE);
     // glfwWindowHint(GLFW_MOUSE_PASSTHROUGH, GLFW_TRUE);
     auto window = glfwCreateWindow(1920, 1200, "next", nullptr, nullptr);
+    NOVA_ON_SCOPE_EXIT(&) {
+        glfwDestroyWindow(window);
+        glfwTerminate();
+    };
 
     auto context = nova::Context::Create(true);
 
@@ -35,24 +39,20 @@ int main()
 
     struct PushConstants
     {
-        alignas(8) glm::vec2 pos;
-        alignas(8) glm::vec2 size;
-        alignas(16) glm::vec4 color;
-
-        // alignas(8) Vec2 invHalfExtent;
-        // alignas(8) Vec2 centerPos;
-        // u64 instancesVA;
+        alignas(8) Vec2 invHalfExtent;
+        alignas(8) Vec2 centerPos;
+        u64 instancesVA;
     };
 
-    // struct RoundedBox
-    // {
-    //     Vec4 centerColor;
-    //     Vec4 borderColor;
-    //     Vec2 centerPos;
-    //     Vec2 halfExtent;
-    //     float cornerRadius;
-    //     float borderWidth;
-    // };
+    struct RoundedBox
+    {
+        Vec4 centerColor;
+        Vec4 borderColor;
+        Vec2 centerPos;
+        Vec2 halfExtent;
+        float cornerRadius;
+        float borderWidth;
+    };
 
     VkPushConstantRange range {
         .stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
@@ -66,32 +66,33 @@ int main()
         .pPushConstantRanges = &range,
     }), context->pAlloc, &layout));
 
+    auto instanceBuffer = context->CreateBuffer(sizeof(RoundedBox) * 3,
+        nova::BufferUsage::Storage,
+        nova::BufferFlags::DeviceLocal
+        | nova::BufferFlags::CreateMapped);
+
     std::string preamble = R"(
 #version 460
 
-// #extension GL_EXT_scalar_block_layout : require
-// #extension GL_EXT_shader_explicit_arithmetic_types_int64 : require
-// #extension GL_EXT_buffer_reference2 : require
+#extension GL_EXT_scalar_block_layout : require
+#extension GL_EXT_shader_explicit_arithmetic_types_int64 : require
+#extension GL_EXT_buffer_reference2 : require
 
-// struct RoundedBox
-// {
-//     vec4 centerColor;
-//     vec4 borderColor;
-//     vec2 centerPos;
-//     vec2 halfExtent;
-//     float cornerRadius;
-//     float borderWidth;
-// }
-// layout(buffer_reference, scalar) RoundedBoxRef { RoundedBox data[]; };
+struct RoundedBox
+{
+    vec4 centerColor;
+    vec4 borderColor;
+    vec2 centerPos;
+    vec2 halfExtent;
+    float cornerRadius;
+    float borderWidth;
+};
+layout(buffer_reference, scalar) buffer RoundedBoxRef { RoundedBox data[]; };
 
 layout(push_constant) uniform PushConstants {
-    vec2 pos;
-    vec2 size;
-    vec4 color;
-
-    // vec2 invHalfExtent;
-    // vec2 centerPos;
-    // uint64_t instancesVA;
+    vec2 invHalfExtent;
+    vec2 centerPos;
+    uint64_t instancesVA;
 } pc;
     )";
 
@@ -109,19 +110,16 @@ const vec2[6] deltas = vec2[] (
     vec2( 1, -1)
 );
 
-// layout(location = 0) out uint outInstanceID;
-
 layout(location = 0) out vec2 outTex;
+layout(location = 1) out uint outInstanceID;
 
 void main()
 {
-    // RoundedBox box = RoundedBoxRef(pc.instancesVA).data[gl_InstanceIndex];
-    // vec2 delta = deltas[gl_VertexIndex % 6];
-    // outTex = delta * box.halfExtent;
-    // gl_Position = vec4((delta - pc.centerPos) * pc.invHalfExtent, 0, 1);
-
-    outTex = deltas[gl_VertexIndex] * 100;
-    gl_Position = vec4(deltas[gl_VertexIndex] * pc.size + pc.pos, 0, 1);
+    RoundedBox box = RoundedBoxRef(pc.instancesVA).data[gl_InstanceIndex];
+    vec2 delta = deltas[gl_VertexIndex % 6];
+    outTex = delta * box.halfExtent;
+    outInstanceID = gl_InstanceIndex;
+    gl_Position = vec4(((delta * box.halfExtent) + box.centerPos - pc.centerPos) * pc.invHalfExtent, 0, 1);
 }
         )",
         {range});
@@ -130,47 +128,35 @@ void main()
         nova::ShaderStage::Fragment, {},
         "fragment",
         preamble + R"(
-// layout(location = 0) in uint inInstanceID;
-layout(location = 0)  in vec2 inTex;
+layout(location = 0) in vec2 inTex;
+layout(location = 1) in flat uint inInstanceID;
 
 layout(location = 0) out vec4 outColor;
 
 void main()
 {
-    // RoundedBox box = RoundedBoxRef(pc.instancesVA).data[inInstanceID];
+    RoundedBox box = RoundedBoxRef(pc.instancesVA).data[inInstanceID];
 
-    // vec4 border = box.borderColor;
-    // vec4 center = box.centerColor;
-    // vec2 halfExtent = box.halfExtent;
-    // float cornerRadius = box.cornerRadius;
-    // float borderWidth = box.borderWidth;
+    vec2 absPos = abs(inTex);
+    vec2 cornerFocus = box.halfExtent - vec2(box.cornerRadius);
 
-    vec4 border = vec4(vec3(0.2), 1);
-    vec4 center = pc.color;
-    vec2 halfExtent = vec2(100, 100);
-    float cornerRadius = 15.0;
-    float borderWidth = 5.0;
-
-    vec2 cornerFocus = halfExtent - vec2(cornerRadius);
-
-    if (abs(inTex.x) > cornerFocus.x && abs(inTex.y) > cornerFocus.y)
+    if (absPos.x > cornerFocus.x && absPos.y > cornerFocus.y)
     {
-        vec2 pos = vec2(abs(inTex.x), abs(inTex.y));
-        float dist = length(pos - cornerFocus);
-        if (dist > cornerRadius + 0.5)
+        float dist = length(absPos - cornerFocus);
+        if (dist > box.cornerRadius + 0.5)
             discard;
 
-        if (dist > cornerRadius - borderWidth + 0.5)
-            outColor = vec4(border.rgb, border.a * (1 - max(0, dist - (cornerRadius - 0.5))));
+        if (dist > box.cornerRadius - box.borderWidth + 0.5)
+            outColor = vec4(box.borderColor.rgb, box.borderColor.a * (1 - max(0, dist - (box.cornerRadius - 0.5))));
         else
-            outColor = mix(center, border, max(0, dist - (cornerRadius - borderWidth - 0.5)));
+            outColor = mix(box.centerColor, box.borderColor, max(0, dist - (box.cornerRadius - box.borderWidth - 0.5)));
     }
     else
     {
-        if (abs(inTex.x) > halfExtent.x - borderWidth || abs(inTex.y) > halfExtent.y - borderWidth)
+        if (absPos.x > box.halfExtent.x - box.borderWidth || absPos.y > box.halfExtent.y - box.borderWidth)
             outColor = vec4(vec3(0.2), 1.0);
         else
-            outColor = center;
+            outColor = box.centerColor;
     }
 }
         )",
@@ -185,67 +171,66 @@ void main()
 
     std::cout << "Monitor size = " << mWidth << ", " << mHeight << '\n';
 
-    struct Box {
-        float x, y, w, h;
-        Vec4 color;
+    RoundedBox box1 {
+        .centerColor = { 1.f, 0.f, 0.f, 0.5f },
+        .borderColor = { 0.2f, 0.2f, 0.2f, 1.f },
+        .centerPos = { mWidth * 0.25f, mHeight * 0.25f },
+        .halfExtent = { 100.f, 100.f },
+        .cornerRadius = 15.f,
+        .borderWidth = 5.f,
     };
 
-    Box box1 {
-        .x = mWidth * 0.25f,
-        .y = mHeight * 0.25f,
-        .w = 100.f,
-        .h = 100.f,
-        .color = Vec4(1.f, 0.f, 0.f, 0.5f),
+    RoundedBox box2 {
+        .centerColor = { 0.f, 1.f, 0.f, 0.5f },
+        .borderColor = { 0.2f, 0.2f, 0.2f, 1.f },
+        .centerPos = { mWidth * 0.5f, mHeight * 0.5f },
+        .halfExtent = { 100.f, 100.f },
+        .cornerRadius = 15.f,
+        .borderWidth = 10.f,
     };
 
-    Box box2 {
-        .x = mWidth * 0.5f,
-        .y = mHeight * 0.5f,
-        .w = 100.f,
-        .h = 100.f,
-        .color = Vec4(0.f, 1.f, 0.f, 0.5f),
+    RoundedBox box3 {
+        .centerColor = { 0.f, 0.f, 1.f, 0.5f },
+        .borderColor = { 0.2f, 0.2f, 0.2f, 1.f },
+        .centerPos = { mWidth * 0.75f, mHeight * 0.75f },
+        .halfExtent = { 200.f, 100.f },
+        .cornerRadius = 25.f,
+        .borderWidth = 10.f,
     };
 
-    Box box3 {
-        .x = mWidth * 0.75f,
-        .y = mHeight * 0.75f,
-        .w = 100.f,
-        .h = 100.f,
-        .color = Vec4(0.f, 0.f, 1.f, 0.5f),
-    };
+    instanceBuffer->Get<RoundedBox>(0) = box1;
+    instanceBuffer->Get<RoundedBox>(1) = box2;
+    instanceBuffer->Get<RoundedBox>(2) = box3;
 
     struct Rect {
         float left = INFINITY, right = -INFINITY, top = INFINITY, bottom = -INFINITY;
     };
 
-    auto expandBounds = [](Rect& bounds, const Box& box)
+    auto expandBounds = [](Rect& bounds, const RoundedBox& box)
     {
-        bounds.left = std::min(bounds.left, box.x - box.w);
-        bounds.right = std::max(bounds.right, box.x + box.w);
-        bounds.top = std::min(bounds.top, box.y - box.h);
-        bounds.bottom = std::max(bounds.bottom, box.y + box.h);
+        bounds.left = std::min(bounds.left, box.centerPos.x - box.halfExtent.x);
+        bounds.right = std::max(bounds.right, box.centerPos.x + box.halfExtent.x);
+        bounds.top = std::min(bounds.top, box.centerPos.y - box.halfExtent.y);
+        bounds.bottom = std::max(bounds.bottom, box.centerPos.y + box.halfExtent.y);
     };
 
-    auto drawBox = [&](nova::CommandList* cmd, const Rect& bounds, const Box& box) {
+    auto drawBox = [&](nova::CommandList* cmd, const Rect& bounds, u32 instanceID) {
         float width = bounds.right - bounds.left;
         float height = bounds.bottom - bounds.top;
 
-        Box out;
-        out.x = (2.f * (box.x - bounds.left) / width) - 1.f;
-        out.y = (2.f * (box.y - bounds.top) / height) - 1.f;
-        out.w = 2.f * box.w / width;
-        out.h = 2.f * box.w / height;
+        auto& box = instanceID == 0 ? box1 : instanceID == 1 ? box2 : box3;
+        instanceBuffer->Get<RoundedBox>(instanceID) = box;
 
         cmd->PushConstants(layout,
             nova::ShaderStage::Vertex | nova::ShaderStage::Fragment,
             range.offset, range.size,
             nova::Temp(PushConstants {
-                .pos = { out.x, out.y },
-                .size = { out.w, out.h },
-                .color = box.color,
+                .invHalfExtent = Vec2(2.f / (bounds.right - bounds.left), 2.f / (bounds.bottom - bounds.top)),
+                .centerPos = Vec2((bounds.left + bounds.right) / 2.f, (bounds.top + bounds.bottom) / 2.f),
+                .instancesVA = instanceBuffer->address,
             }));
 
-        cmd->Draw(6, 1, 0, 0);
+        cmd->Draw(6, 1, 0, instanceID);
     };
 
     bool redraw = true;
@@ -260,12 +245,12 @@ void main()
 
         if (!skipUpdate)
         {
-            auto moveBox = [&](Box& box, int left, int right, int up, int down) {
+            auto moveBox = [&](RoundedBox& box, int left, int right, int up, int down) {
                 float speed = 5.f;
-                if (glfwGetKey(window, left))  { box.x -= speed; redraw = true; }
-                if (glfwGetKey(window, right)) { box.x += speed; redraw = true; }
-                if (glfwGetKey(window, up))    { box.y -= speed; redraw = true; }
-                if (glfwGetKey(window, down))  { box.y += speed; redraw = true; }
+                if (glfwGetKey(window, left))  { box.centerPos.x -= speed; redraw = true; }
+                if (glfwGetKey(window, right)) { box.centerPos.x += speed; redraw = true; }
+                if (glfwGetKey(window, up))    { box.centerPos.y -= speed; redraw = true; }
+                if (glfwGetKey(window, down))  { box.centerPos.y += speed; redraw = true; }
             };
 
             moveBox(box1, GLFW_KEY_A, GLFW_KEY_D, GLFW_KEY_W, GLFW_KEY_S);
@@ -300,13 +285,13 @@ void main()
         fence->Wait();
         commandPool->Reset();
 
-        auto cmd2 = commandPool->BeginSecondary(tracker, nova::RenderingDescription {
-            .colorFormats = { nova::Format(swapchain->format.format) },
-        });
-        drawBox(cmd2, bounds, box1);
-        drawBox(cmd2, bounds, box2);
-        drawBox(cmd2, bounds, box3);
-        cmd2->End();
+        // auto cmd2 = commandPool->BeginSecondary(tracker, nova::RenderingDescription {
+        //     .colorFormats = { nova::Format(swapchain->format.format) },
+        // });
+        // drawBox(cmd2, bounds, 0);
+        // drawBox(cmd2, bounds, 1);
+        // drawBox(cmd2, bounds, 2);
+        // cmd2->End();
 
         auto cmd = commandPool->BeginPrimary(tracker);
         cmd->SetViewport({ bounds.right - bounds.left, bounds.bottom - bounds.top }, false);
@@ -322,7 +307,11 @@ void main()
         queue->Acquire({swapchain}, {fence});
 
         cmd->BeginRendering({swapchain->image}, {Vec4(0.f)}, true);
-        cmd->ExecuteCommands({cmd2});
+        // cmd->ExecuteCommands({cmd2});
+
+        drawBox(cmd, bounds, 0);
+        drawBox(cmd, bounds, 1);
+        drawBox(cmd, bounds, 2);
         cmd->EndRendering();
 
         cmd->Transition(swapchain->image, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
@@ -330,7 +319,13 @@ void main()
         queue->Submit({cmd}, {fence}, {fence});
         queue->Present({swapchain}, {fence});
     }
+}
 
-    glfwDestroyWindow(window);
-    glfwTerminate();
+int main()
+{
+    try
+    {
+        TryMain();
+    }
+    catch(...) {}
 }
