@@ -15,6 +15,7 @@ int main()
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
     glfwWindowHint(GLFW_TRANSPARENT_FRAMEBUFFER, GLFW_TRUE);
     glfwWindowHint(GLFW_DECORATED, GLFW_FALSE);
+    glfwWindowHint(GLFW_MOUSE_PASSTHROUGH, GLFW_TRUE);
     auto window = glfwCreateWindow(1920, 1200, "next", nullptr, nullptr);
 
     auto context = nova::Context::Create(true);
@@ -38,6 +39,16 @@ int main()
         alignas(8) glm::vec2 size;
         alignas(16) glm::vec4 color;
     };
+
+    // struct Box
+    // {
+    //     Vec4 centerColor;
+    //     Vec4 borderColor;
+    //     Vec2 position;
+    //     Vec2 size;
+    //     float radius;
+    //     float borderRadius;
+    // };
 
     VkPushConstantRange range {
         .stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
@@ -73,8 +84,11 @@ const vec2[6] deltas = vec2[] (
     vec2( 1, -1)
 );
 
+layout(location = 0) out vec2 outTex;
+
 void main()
 {
+    outTex = deltas[gl_VertexIndex];
     gl_Position = vec4(pc.pos + deltas[gl_VertexIndex] * pc.size, 0, 1);
 }
         )",
@@ -92,11 +106,34 @@ layout(push_constant) uniform PushConstants {
     vec4 color;
 } pc;
 
+layout(location = 0) in vec2 inTex;
+
 layout(location = 0) out vec4 outColor;
 
 void main()
 {
-    outColor = pc.color;
+    vec4 border = vec4(vec3(0.2), 1);
+    vec4 center = pc.color;
+
+    if (abs(inTex.x) > 0.5 && abs(inTex.y) > 0.5)
+    {
+        vec2 pos = vec2(abs(inTex.x), abs(inTex.y));
+        float dist = length(pos - vec2(0.5));
+        if (dist > 0.505)
+            discard;
+
+        if (dist > 0.405)
+            outColor = vec4(border.rgb, border.a * (1 - max(0, (dist - 0.495) / 0.01)));
+        else
+            outColor = mix(center, border, max(0, (dist - 0.395) / 0.01));
+    }
+    else
+    {
+        if (abs(inTex.x) > 0.9 || abs(inTex.y) > 0.9)
+            outColor = vec4(vec3(0.2), 1.0);
+        else
+            outColor = center;
+    }
 }
         )",
         {range});
@@ -174,6 +211,7 @@ void main()
     };
 
     bool redraw = true;
+    bool skipUpdate = false;
 
     auto lastFrame = std::chrono::steady_clock::now();
     while (!glfwWindowShouldClose(window))
@@ -182,22 +220,32 @@ void main()
 
 // -----------------------------------------------------------------------------
 
-        auto moveBox = [&](Box& box, int left, int right, int up, int down) {
-            float speed = 100.f;
-            if (glfwGetKey(window, left))  box.x -= speed;
-            if (glfwGetKey(window, right)) box.x += speed;
-            if (glfwGetKey(window, up))    box.y -= speed;
-            if (glfwGetKey(window, down))  box.y += speed;
+        if (!skipUpdate)
+        {
+            auto moveBox = [&](Box& box, int left, int right, int up, int down) {
+                float speed = 5.f;
+                if (glfwGetKey(window, left))  { box.x -= speed; redraw = true; }
+                if (glfwGetKey(window, right)) { box.x += speed; redraw = true; }
+                if (glfwGetKey(window, up))    { box.y -= speed; redraw = true; }
+                if (glfwGetKey(window, down))  { box.y += speed; redraw = true; }
+            };
 
-            redraw |= !!glfwGetKey(window, left) || !!glfwGetKey(window, right) || !!glfwGetKey(window, up) || !!glfwGetKey(window, down);
-        };
+            moveBox(box1, GLFW_KEY_A, GLFW_KEY_D, GLFW_KEY_W, GLFW_KEY_S);
+            moveBox(box2, GLFW_KEY_J, GLFW_KEY_L, GLFW_KEY_I, GLFW_KEY_K);
+            moveBox(box3, GLFW_KEY_LEFT, GLFW_KEY_RIGHT, GLFW_KEY_UP, GLFW_KEY_DOWN);
+        }
+        else
+        {
+            redraw = true;
+        }
 
-        moveBox(box1, GLFW_KEY_A, GLFW_KEY_D, GLFW_KEY_W, GLFW_KEY_S);
-        moveBox(box2, GLFW_KEY_J, GLFW_KEY_L, GLFW_KEY_I, GLFW_KEY_K);
-        moveBox(box3, GLFW_KEY_LEFT, GLFW_KEY_RIGHT, GLFW_KEY_UP, GLFW_KEY_DOWN);
+        skipUpdate = false;
 
         if (!redraw)
+        {
             glfwWaitEvents();
+            skipUpdate = true;
+        }
         redraw = false;
 
 // -----------------------------------------------------------------------------
@@ -224,8 +272,8 @@ void main()
 
         auto cmd = commandPool->BeginPrimary(tracker);
         cmd->SetViewport({ bounds.right - bounds.left, bounds.bottom - bounds.top }, false);
-        cmd->SetBlendState(1, false);
-        cmd->SetTopology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP);
+        cmd->SetBlendState(1, true);
+        cmd->SetTopology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
         cmd->BindShaders({vs, fs});
 
         // Update window size, record primary buffer and present
@@ -235,7 +283,7 @@ void main()
 
         queue->Acquire({swapchain}, {fence});
 
-        cmd->BeginRendering({swapchain->image}, {Vec4(0.2f, 0.2f, 0.2f, 0.5f)}, true);
+        cmd->BeginRendering({swapchain->image}, {Vec4(0.f)}, true);
         cmd->ExecuteCommands({cmd2});
         cmd->EndRendering();
 
