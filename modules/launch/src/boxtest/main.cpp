@@ -15,7 +15,7 @@ int main()
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
     glfwWindowHint(GLFW_TRANSPARENT_FRAMEBUFFER, GLFW_TRUE);
     glfwWindowHint(GLFW_DECORATED, GLFW_FALSE);
-    glfwWindowHint(GLFW_MOUSE_PASSTHROUGH, GLFW_TRUE);
+    // glfwWindowHint(GLFW_MOUSE_PASSTHROUGH, GLFW_TRUE);
     auto window = glfwCreateWindow(1920, 1200, "next", nullptr, nullptr);
 
     auto context = nova::Context::Create(true);
@@ -38,16 +38,20 @@ int main()
         alignas(8) glm::vec2 pos;
         alignas(8) glm::vec2 size;
         alignas(16) glm::vec4 color;
+
+        // alignas(8) Vec2 invHalfExtent;
+        // alignas(8) Vec2 centerPos;
+        // u64 instancesVA;
     };
 
-    // struct Box
+    // struct RoundedBox
     // {
     //     Vec4 centerColor;
     //     Vec4 borderColor;
-    //     Vec2 position;
-    //     Vec2 size;
-    //     float radius;
-    //     float borderRadius;
+    //     Vec2 centerPos;
+    //     Vec2 halfExtent;
+    //     float cornerRadius;
+    //     float borderWidth;
     // };
 
     VkPushConstantRange range {
@@ -62,18 +66,39 @@ int main()
         .pPushConstantRanges = &range,
     }), context->pAlloc, &layout));
 
-    auto vs = context->CreateShader(
-        nova::ShaderStage::Vertex, {},
-        "vertex",
-        R"(
+    std::string preamble = R"(
 #version 460
+
+// #extension GL_EXT_scalar_block_layout : require
+// #extension GL_EXT_shader_explicit_arithmetic_types_int64 : require
+// #extension GL_EXT_buffer_reference2 : require
+
+// struct RoundedBox
+// {
+//     vec4 centerColor;
+//     vec4 borderColor;
+//     vec2 centerPos;
+//     vec2 halfExtent;
+//     float cornerRadius;
+//     float borderWidth;
+// }
+// layout(buffer_reference, scalar) RoundedBoxRef { RoundedBox data[]; };
 
 layout(push_constant) uniform PushConstants {
     vec2 pos;
     vec2 size;
     vec4 color;
-} pc;
 
+    // vec2 invHalfExtent;
+    // vec2 centerPos;
+    // uint64_t instancesVA;
+} pc;
+    )";
+
+    auto vs = context->CreateShader(
+        nova::ShaderStage::Vertex, {},
+        "vertex",
+        preamble + R"(
 const vec2[6] deltas = vec2[] (
     vec2(-1, -1),
     vec2(-1,  1),
@@ -84,12 +109,19 @@ const vec2[6] deltas = vec2[] (
     vec2( 1, -1)
 );
 
+// layout(location = 0) out uint outInstanceID;
+
 layout(location = 0) out vec2 outTex;
 
 void main()
 {
-    outTex = deltas[gl_VertexIndex];
-    gl_Position = vec4(pc.pos + deltas[gl_VertexIndex] * pc.size, 0, 1);
+    // RoundedBox box = RoundedBoxRef(pc.instancesVA).data[gl_InstanceIndex];
+    // vec2 delta = deltas[gl_VertexIndex % 6];
+    // outTex = delta * box.halfExtent;
+    // gl_Position = vec4((delta - pc.centerPos) * pc.invHalfExtent, 0, 1);
+
+    outTex = deltas[gl_VertexIndex] * 100;
+    gl_Position = vec4(deltas[gl_VertexIndex] * pc.size + pc.pos, 0, 1);
 }
         )",
         {range});
@@ -97,39 +129,45 @@ void main()
     auto fs = context->CreateShader(
         nova::ShaderStage::Fragment, {},
         "fragment",
-        R"(
-#version 460
-
-layout(push_constant) uniform PushConstants {
-    vec2 pos;
-    vec2 size;
-    vec4 color;
-} pc;
-
-layout(location = 0) in vec2 inTex;
+        preamble + R"(
+// layout(location = 0) in uint inInstanceID;
+layout(location = 0)  in vec2 inTex;
 
 layout(location = 0) out vec4 outColor;
 
 void main()
 {
+    // RoundedBox box = RoundedBoxRef(pc.instancesVA).data[inInstanceID];
+
+    // vec4 border = box.borderColor;
+    // vec4 center = box.centerColor;
+    // vec2 halfExtent = box.halfExtent;
+    // float cornerRadius = box.cornerRadius;
+    // float borderWidth = box.borderWidth;
+
     vec4 border = vec4(vec3(0.2), 1);
     vec4 center = pc.color;
+    vec2 halfExtent = vec2(100, 100);
+    float cornerRadius = 15.0;
+    float borderWidth = 5.0;
 
-    if (abs(inTex.x) > 0.5 && abs(inTex.y) > 0.5)
+    vec2 cornerFocus = halfExtent - vec2(cornerRadius);
+
+    if (abs(inTex.x) > cornerFocus.x && abs(inTex.y) > cornerFocus.y)
     {
         vec2 pos = vec2(abs(inTex.x), abs(inTex.y));
-        float dist = length(pos - vec2(0.5));
-        if (dist > 0.505)
+        float dist = length(pos - cornerFocus);
+        if (dist > cornerRadius + 0.5)
             discard;
 
-        if (dist > 0.405)
-            outColor = vec4(border.rgb, border.a * (1 - max(0, (dist - 0.495) / 0.01)));
+        if (dist > cornerRadius - borderWidth + 0.5)
+            outColor = vec4(border.rgb, border.a * (1 - max(0, dist - (cornerRadius - 0.5))));
         else
-            outColor = mix(center, border, max(0, (dist - 0.395) / 0.01));
+            outColor = mix(center, border, max(0, dist - (cornerRadius - borderWidth - 0.5)));
     }
     else
     {
-        if (abs(inTex.x) > 0.9 || abs(inTex.y) > 0.9)
+        if (abs(inTex.x) > halfExtent.x - borderWidth || abs(inTex.y) > halfExtent.y - borderWidth)
             outColor = vec4(vec3(0.2), 1.0);
         else
             outColor = center;
@@ -157,7 +195,7 @@ void main()
         .y = mHeight * 0.25f,
         .w = 100.f,
         .h = 100.f,
-        .color = Vec4(1.f, 0.f, 0.f, 1.f),
+        .color = Vec4(1.f, 0.f, 0.f, 0.5f),
     };
 
     Box box2 {
@@ -165,7 +203,7 @@ void main()
         .y = mHeight * 0.5f,
         .w = 100.f,
         .h = 100.f,
-        .color = Vec4(0.f, 1.f, 0.f, 1.f),
+        .color = Vec4(0.f, 1.f, 0.f, 0.5f),
     };
 
     Box box3 {
@@ -173,7 +211,7 @@ void main()
         .y = mHeight * 0.75f,
         .w = 100.f,
         .h = 100.f,
-        .color = Vec4(0.f, 0.f, 1.f, 1.f),
+        .color = Vec4(0.f, 0.f, 1.f, 0.5f),
     };
 
     struct Rect {
