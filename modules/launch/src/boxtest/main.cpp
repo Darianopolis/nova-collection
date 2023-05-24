@@ -1,11 +1,18 @@
 #include <nova/rhi/nova_RHI.hpp>
 #include <nova/core/nova_Timer.hpp>
 
+#include <nova/imdraw/nova_ImDraw2D.hpp>
+
 #include <GLFW/glfw3.h>
 #include <GLFW/glfw3native.h>
 
 #include <array>
 #include <iostream>
+
+#include <windowsx.h>
+#include <shellapi.h>
+#include <wincodec.h>
+#include <CommCtrl.h>
 
 using namespace nova::types;
 
@@ -31,136 +38,13 @@ void TryMain()
         nova::PresentMode::Fifo);
 
     auto queue = context->graphics;
-    auto commandPool = context->CreateCommands();
+    auto commandPool = context->CreateCommandPool();
     auto fence = context->CreateFence();
     auto tracker = context->CreateResourceTracker();
 
 // -----------------------------------------------------------------------------
 
-    struct PushConstants
-    {
-        alignas(8) Vec2 invHalfExtent;
-        alignas(8) Vec2 centerPos;
-        u64 instancesVA;
-    };
-
-    struct RoundedBox
-    {
-        Vec4 centerColor;
-        Vec4 borderColor;
-        Vec2 centerPos;
-        Vec2 halfExtent;
-        float cornerRadius;
-        float borderWidth;
-    };
-
-    VkPushConstantRange range {
-        .stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
-        .size = sizeof(PushConstants),
-    };
-
-    VkPipelineLayout layout;
-    nova::VkCall(vkCreatePipelineLayout(context->device, nova::Temp(VkPipelineLayoutCreateInfo {
-        .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
-        .pushConstantRangeCount = 1,
-        .pPushConstantRanges = &range,
-    }), context->pAlloc, &layout));
-
-    auto instanceBuffer = context->CreateBuffer(sizeof(RoundedBox) * 3,
-        nova::BufferUsage::Storage,
-        nova::BufferFlags::DeviceLocal
-        | nova::BufferFlags::CreateMapped);
-
-    std::string preamble = R"(
-#version 460
-
-#extension GL_EXT_scalar_block_layout : require
-#extension GL_EXT_shader_explicit_arithmetic_types_int64 : require
-#extension GL_EXT_buffer_reference2 : require
-
-struct RoundedBox
-{
-    vec4 centerColor;
-    vec4 borderColor;
-    vec2 centerPos;
-    vec2 halfExtent;
-    float cornerRadius;
-    float borderWidth;
-};
-layout(buffer_reference, scalar) buffer RoundedBoxRef { RoundedBox data[]; };
-
-layout(push_constant) uniform PushConstants {
-    vec2 invHalfExtent;
-    vec2 centerPos;
-    uint64_t instancesVA;
-} pc;
-    )";
-
-    auto vs = context->CreateShader(
-        nova::ShaderStage::Vertex, {},
-        "vertex",
-        preamble + R"(
-const vec2[6] deltas = vec2[] (
-    vec2(-1, -1),
-    vec2(-1,  1),
-    vec2( 1, -1),
-
-    vec2(-1,  1),
-    vec2( 1,  1),
-    vec2( 1, -1)
-);
-
-layout(location = 0) out vec2 outTex;
-layout(location = 1) out uint outInstanceID;
-
-void main()
-{
-    RoundedBox box = RoundedBoxRef(pc.instancesVA).data[gl_InstanceIndex];
-    vec2 delta = deltas[gl_VertexIndex % 6];
-    outTex = delta * box.halfExtent;
-    outInstanceID = gl_InstanceIndex;
-    gl_Position = vec4(((delta * box.halfExtent) + box.centerPos - pc.centerPos) * pc.invHalfExtent, 0, 1);
-}
-        )",
-        {range});
-
-    auto fs = context->CreateShader(
-        nova::ShaderStage::Fragment, {},
-        "fragment",
-        preamble + R"(
-layout(location = 0) in vec2 inTex;
-layout(location = 1) in flat uint inInstanceID;
-
-layout(location = 0) out vec4 outColor;
-
-void main()
-{
-    RoundedBox box = RoundedBoxRef(pc.instancesVA).data[inInstanceID];
-
-    vec2 absPos = abs(inTex);
-    vec2 cornerFocus = box.halfExtent - vec2(box.cornerRadius);
-
-    if (absPos.x > cornerFocus.x && absPos.y > cornerFocus.y)
-    {
-        float dist = length(absPos - cornerFocus);
-        if (dist > box.cornerRadius + 0.5)
-            discard;
-
-        if (dist > box.cornerRadius - box.borderWidth + 0.5)
-            outColor = vec4(box.borderColor.rgb, box.borderColor.a * (1 - max(0, dist - (box.cornerRadius - 0.5))));
-        else
-            outColor = mix(box.centerColor, box.borderColor, max(0, dist - (box.cornerRadius - box.borderWidth - 0.5)));
-    }
-    else
-    {
-        if (absPos.x > box.halfExtent.x - box.borderWidth || absPos.y > box.halfExtent.y - box.borderWidth)
-            outColor = vec4(vec3(0.2), 1.0);
-        else
-            outColor = box.centerColor;
-    }
-}
-        )",
-        {range});
+    auto imDraw = nova::ImDraw2D::Create(context);
 
 // -----------------------------------------------------------------------------
 
@@ -171,66 +55,228 @@ void main()
 
     std::cout << "Monitor size = " << mWidth << ", " << mHeight << '\n';
 
-    RoundedBox box1 {
-        .centerColor = { 1.f, 0.f, 0.f, 0.5f },
-        .borderColor = { 0.2f, 0.2f, 0.2f, 1.f },
-        .centerPos = { mWidth * 0.25f, mHeight * 0.25f },
-        .halfExtent = { 100.f, 100.f },
-        .cornerRadius = 15.f,
-        .borderWidth = 5.f,
-    };
+    auto font = imDraw->LoadFont("SEGUISB.TTF", 35.f, commandPool, tracker, fence, queue);
+    auto fontSmall = imDraw->LoadFont("SEGOEUI.TTF", 18.f, commandPool, tracker, fence, queue);
 
-    RoundedBox box2 {
-        .centerColor = { 0.f, 1.f, 0.f, 0.5f },
-        .borderColor = { 0.2f, 0.2f, 0.2f, 1.f },
-        .centerPos = { mWidth * 0.5f, mHeight * 0.5f },
-        .halfExtent = { 100.f, 100.f },
-        .cornerRadius = 15.f,
-        .borderWidth = 10.f,
-    };
-
-    RoundedBox box3 {
-        .centerColor = { 0.f, 0.f, 1.f, 0.5f },
-        .borderColor = { 0.2f, 0.2f, 0.2f, 1.f },
-        .centerPos = { mWidth * 0.75f, mHeight * 0.75f },
-        .halfExtent = { 200.f, 100.f },
-        .cornerRadius = 25.f,
-        .borderWidth = 10.f,
-    };
-
-    instanceBuffer->Get<RoundedBox>(0) = box1;
-    instanceBuffer->Get<RoundedBox>(1) = box2;
-    instanceBuffer->Get<RoundedBox>(2) = box3;
-
-    struct Rect {
-        float left = INFINITY, right = -INFINITY, top = INFINITY, bottom = -INFINITY;
-    };
-
-    auto expandBounds = [](Rect& bounds, const RoundedBox& box)
+    auto image = context->CreateImage({ 1, 1, 0 }, nova::ImageUsage::Sampled, nova::Format::RGBA8U);
+    NOVA_ON_EXIT(&) { context->DestroyImage(image); };
     {
-        bounds.left = std::min(bounds.left, box.centerPos.x - box.halfExtent.x);
-        bounds.right = std::max(bounds.right, box.centerPos.x + box.halfExtent.x);
-        bounds.top = std::min(bounds.top, box.centerPos.y - box.halfExtent.y);
-        bounds.bottom = std::max(bounds.bottom, box.centerPos.y + box.halfExtent.y);
+        auto staging = context->CreateBuffer(4, nova::BufferUsage::Storage, nova::BufferFlags::CreateMapped);
+        staging->Get<std::array<u8, 4>>(0) = { 255, 255, 255, 255 };
+
+        auto cmd = commandPool->BeginPrimary(tracker);
+        cmd->CopyToImage(image, staging);
+        queue->Submit({cmd}, {}, {fence});
+        fence->Wait();
+
+        context->DestroyBuffer(staging);
+    }
+    auto imageID = imDraw->RegisterTexture(image, imDraw->defaultSampler);
+
+    CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
+    IWICImagingFactory* wic;
+    CoCreateInstance(
+        CLSID_WICImagingFactory,
+        nullptr,
+        CLSCTX_INPROC_SERVER | CLSCTX_LOCAL_SERVER,
+        __uuidof(IWICImagingFactory),
+        (void**)&wic);
+    NOVA_ON_SCOPE_EXIT(&) { wic->Release(); };
+
+    auto loadImage = [&](std::wstring path) -> nova::Image* {
+        HICON icon = {};
+        SHFILEINFO info = {};
+
+        auto list = (HIMAGELIST)SHGetFileInfoW(path.c_str(), FILE_ATTRIBUTE_NORMAL, &info, sizeof(info), SHGFI_SYSICONINDEX);
+        if (list)
+        {
+            icon = ImageList_GetIcon(list, info.iIcon, ILD_NORMAL);
+            ImageList_Destroy(list);
+        }
+
+        if (!icon)
+        {
+            SHGetFileInfoW(path.c_str(), FILE_ATTRIBUTE_NORMAL, &info, sizeof(info), SHGFI_ICON | SHGFI_LARGEICON);
+            icon = info.hIcon;
+        }
+
+        if (icon)
+        {
+            IWICBitmap* bitmap;
+            wic->CreateBitmapFromHICON(icon, &bitmap);
+            NOVA_ON_SCOPE_EXIT(&) { bitmap->Release(); };
+
+            u32 width, height;
+            bitmap->GetSize(&width, &height);
+
+            IWICFormatConverter* converter;
+            wic->CreateFormatConverter(&converter);
+            NOVA_ON_SCOPE_EXIT(&) { converter->Release(); };
+            converter->Initialize(
+                bitmap,
+                GUID_WICPixelFormat32bppRGBA,
+                WICBitmapDitherTypeNone,
+                nullptr, 0,
+                WICBitmapPaletteTypeMedianCut);
+
+            NOVA_LOG("Loading icon, size = ({}, {})", width, height);
+
+            usz dataSize = width * height * 4;
+            auto image = context->CreateImage(Vec3U(width, height, 0), nova::ImageUsage::Sampled, nova::Format::RGBA8U);
+            NOVA_ON_SCOPE_FAILURE(&) { context->DestroyImage(image); };
+
+            auto staging = context->CreateBuffer(dataSize, nova::BufferUsage::TransferSrc, nova::BufferFlags::CreateMapped);
+            converter->CopyPixels(nullptr, width * 4, UINT(dataSize), (BYTE*)staging->mapped);
+
+            // for (u32 x = 0; x < width; ++x)
+            // {
+            //     for (u32 y = 0; y < height; ++y)
+            //     {
+            //         u32 pixelOffset = x + (y * width);
+            //         usz byteOffset = pixelOffset * 4;
+            //         NOVA_LOG("Pixel[{}, {}] = ({}, {}, {}, {})",
+            //             x, y,
+            //             (u8)staging->mapped[byteOffset + 0],
+            //             (u8)staging->mapped[byteOffset + 1],
+            //             (u8)staging->mapped[byteOffset + 2],
+            //             (u8)staging->mapped[byteOffset + 3]);
+            //     }
+            // }
+
+            auto cmd = commandPool->BeginPrimary(tracker);
+            cmd->CopyToImage(image, staging);
+            queue->Submit({cmd}, {}, {fence});
+            fence->Wait();
+
+            return image;
+        }
+NOVA_DEBUG();
+        return nullptr;
     };
 
-    auto drawBox = [&](nova::CommandList* cmd, const Rect& bounds, u32 instanceID) {
-        float width = bounds.right - bounds.left;
-        float height = bounds.bottom - bounds.top;
+    // auto icon = loadImage(L"C:\\Program Files (x86)\\Steam\\steamapps\\common\\BeamNG.drive\\BeamNG.drive.exe");
 
-        auto& box = instanceID == 0 ? box1 : instanceID == 1 ? box2 : box3;
-        instanceBuffer->Get<RoundedBox>(instanceID) = box;
+    std::array<nova::Image*, 5> icons;
+    icons[0] = loadImage(L"C:\\Program Files (x86)\\Steam\\steamapps\\common\\BeamNG.drive\\BeamNG.drive.exe");
+    icons[1] = loadImage(L"C:\\Users\\Darian\\AppData\\Local\\osu!\\osu!.exe");
+    icons[2] = loadImage(L"C:\\Program Files\\Cakewalk\\Cakewalk Core\\Cakewalk.exe");
+    icons[3] = loadImage(L"D:\\Dev\\Projects\\pyrite\\nova");
+    icons[4] = loadImage(L"D:\\Dev\\Projects\\nomoreshortcuts\\nomoreshortcuts-v2");
+    NOVA_ON_SCOPE_EXIT(&) { for (auto icon : icons) context->DestroyImage(icon); };
+    std::array<nova::ImTextureID, 5> iconIDs;
+    for (u32 i = 0; i < 5; ++i)
+        iconIDs[i] = imDraw->RegisterTexture(icons[i], imDraw->defaultSampler);
 
-        cmd->PushConstants(layout,
-            nova::ShaderStage::Vertex | nova::ShaderStage::Fragment,
-            range.offset, range.size,
-            nova::Temp(PushConstants {
-                .invHalfExtent = Vec2(2.f / (bounds.right - bounds.left), 2.f / (bounds.bottom - bounds.top)),
-                .centerPos = Vec2((bounds.left + bounds.right) / 2.f, (bounds.top + bounds.bottom) / 2.f),
-                .instancesVA = instanceBuffer->address,
-            }));
+    u32 selectedItem = 0;
+    auto drawWindow = [&] {
 
-        cmd->Draw(6, 1, 0, instanceID);
+        Vec4 backgroundColor = { 0.1f, 0.1f, 0.1f, 1.f };
+        Vec4 borderColor =  { 0.6f, 0.6f, 0.6f, 0.5f };
+        Vec4 highlightColor = { 0.4f, 0.4f, 0.4f, 0.2f, };
+
+        Vec2 pos = { mWidth * 0.5f, mHeight * 0.5f };
+
+        f32 hInputWidth = 960.f;
+        f32 hInputHeight = 29.f;
+
+        f32 outputItemHeight = 76.f;
+        u32 outputCount = 5;
+
+        f32 hOutputWidth = 600.f;
+        f32 hOutputHeight = 0.5f * outputItemHeight * outputCount;
+
+        f32 margin = 18.f;
+
+        f32 cornerRadius = 18.f;
+        f32 borderWidth = 2.f;
+
+        Vec2 textInset = { 74.5f, 37.f };
+        Vec2 textSmallInset = { 76.f, 60.f };
+
+        f32 iconSize = 50;
+        f32 iconPadding = (outputItemHeight - iconSize) / 2.f;
+
+        imDraw->DrawRect({
+            .centerColor = backgroundColor,
+            .borderColor = borderColor,
+            .centerPos = pos - Vec2(0.f, hInputHeight),
+            .halfExtent = Vec2(hInputWidth, hInputHeight) + Vec2(borderWidth),
+            .cornerRadius = cornerRadius,
+            .borderWidth = borderWidth,
+
+            .texTint = { 0.f, 0.f, 0.f, 0.f },
+            .texIndex = imageID,
+        });
+
+        imDraw->DrawRect({
+            .centerColor = backgroundColor,
+            .borderColor = borderColor,
+            .centerPos = pos + Vec2(0.f, hOutputHeight + margin + borderWidth),
+            .halfExtent = Vec2(hOutputWidth, hOutputHeight) + Vec2(borderWidth),
+            .cornerRadius = cornerRadius,
+            .borderWidth = borderWidth,
+
+            .texTint = { 0.f, 0.f, 0.f, 0.f },
+            .texIndex = imageID,
+        });
+
+        imDraw->DrawRect({
+            .centerColor = highlightColor,
+            .centerPos = pos
+                + Vec2(0.f, margin + borderWidth + outputItemHeight * (0.5f + selectedItem)),
+            .halfExtent = Vec2(hOutputWidth, outputItemHeight * 0.5f)
+                - Vec2(2.f),
+            .cornerRadius = cornerRadius - borderWidth - 2.f,
+
+            .texTint = { 0.f, 0.f, 0.f, 0.f },
+            .texIndex = imageID,
+        });
+
+        auto files = std::array {
+            "BeamNG.drive.exe",
+            "osu!.exe",
+            "Cakewalk.exe",
+            "nova",
+            "nomoreshortcuts-v2",
+        };
+
+        auto paths = std::array {
+            "C:/Program Files (x86)/Steam/steamapps/common/BeamNG.drive",
+            "C:/Users/Darian/AppData/Local/osu!",
+            "C:/Program Files/Cakewalk/Cakewalk Core",
+            "D:/Dev/Projects/pyrite",
+            "D:/Dev/Projects/nomoreshortcuts",
+        };
+
+        for (u32 i = 0; i < outputCount; ++i)
+        {
+            imDraw->DrawRect({
+                .centerPos = pos
+                    + Vec2(
+                        -hOutputWidth + (iconSize / 2.f) + iconPadding,
+                        margin + borderWidth + outputItemHeight * (0.5f + i)),
+                .halfExtent = Vec2(iconSize) / 2.f,
+
+                .texTint = { 1.f, 1.f, 1.f, 1.f },
+                .texIndex = iconIDs[i],
+                .texCenterPos = { 0.5f, 0.5f },
+                .texHalfExtent = { 0.5f, 0.5f },
+            });
+
+            imDraw->DrawString(
+                files[i],
+                pos + Vec2(-hOutputWidth, margin + borderWidth)
+                    + Vec2(0.f, outputItemHeight * i)
+                    + textInset,
+                font);
+
+            imDraw->DrawString(
+                paths[i],
+                pos + Vec2(-hOutputWidth, margin + borderWidth)
+                    + Vec2(0.f, outputItemHeight * i)
+                    + textSmallInset,
+                fontSmall);
+        }
     };
 
     bool redraw = true;
@@ -245,17 +291,31 @@ void main()
 
         if (!skipUpdate)
         {
-            auto moveBox = [&](RoundedBox& box, int left, int right, int up, int down) {
-                float speed = 5.f;
-                if (glfwGetKey(window, left))  { box.centerPos.x -= speed; redraw = true; }
-                if (glfwGetKey(window, right)) { box.centerPos.x += speed; redraw = true; }
-                if (glfwGetKey(window, up))    { box.centerPos.y -= speed; redraw = true; }
-                if (glfwGetKey(window, down))  { box.centerPos.y += speed; redraw = true; }
-            };
+            static bool upPressed = false;
+            if (glfwGetKey(window, GLFW_KEY_UP))
+            {
+                if (!upPressed)
+                {
+                    upPressed = true;
+                    selectedItem = std::max(selectedItem, 1u) - 1;
+                    redraw = true;
+                }
+            }
+            else
+                upPressed = false;
 
-            moveBox(box1, GLFW_KEY_A, GLFW_KEY_D, GLFW_KEY_W, GLFW_KEY_S);
-            moveBox(box2, GLFW_KEY_J, GLFW_KEY_L, GLFW_KEY_I, GLFW_KEY_K);
-            moveBox(box3, GLFW_KEY_LEFT, GLFW_KEY_RIGHT, GLFW_KEY_UP, GLFW_KEY_DOWN);
+            static bool downPressed = false;
+            if (glfwGetKey(window, GLFW_KEY_DOWN))
+            {
+                if (!downPressed)
+                {
+                    downPressed = true;
+                    selectedItem = std::min(selectedItem, 3u) + 1;
+                    redraw = true;
+                }
+            }
+            else
+                downPressed = false;
         }
         else
         {
@@ -273,10 +333,9 @@ void main()
 
 // -----------------------------------------------------------------------------
 
-        Rect bounds;
-        expandBounds(bounds, box1);
-        expandBounds(bounds, box2);
-        expandBounds(bounds, box3);
+        imDraw->Reset();
+
+        drawWindow();
 
 // -----------------------------------------------------------------------------
 
@@ -285,36 +344,23 @@ void main()
         fence->Wait();
         commandPool->Reset();
 
-        // auto cmd2 = commandPool->BeginSecondary(tracker, nova::RenderingDescription {
-        //     .colorFormats = { nova::Format(swapchain->format.format) },
-        // });
-        // drawBox(cmd2, bounds, 0);
-        // drawBox(cmd2, bounds, 1);
-        // drawBox(cmd2, bounds, 2);
-        // cmd2->End();
-
         auto cmd = commandPool->BeginPrimary(tracker);
-        cmd->SetViewport({ bounds.right - bounds.left, bounds.bottom - bounds.top }, false);
+        cmd->SetViewport({ imDraw->maxBounds.x - imDraw->minBounds.x, imDraw->maxBounds.y - imDraw->minBounds.y }, false);
         cmd->SetBlendState(1, true);
         cmd->SetTopology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
-        cmd->BindShaders({vs, fs});
 
         // Update window size, record primary buffer and present
 
-        glfwSetWindowSize(window, i32(bounds.right - bounds.left), i32(bounds.bottom - bounds.top));
-        glfwSetWindowPos(window, i32(bounds.left), i32(bounds.top));
+        glfwSetWindowSize(window, i32(imDraw->maxBounds.x - imDraw->minBounds.x), i32(imDraw->maxBounds.y - imDraw->minBounds.y));
+        glfwSetWindowPos(window, i32(imDraw->minBounds.x), i32(imDraw->minBounds.y));
 
         queue->Acquire({swapchain}, {fence});
 
         cmd->BeginRendering({swapchain->image}, {Vec4(0.f)}, true);
-        // cmd->ExecuteCommands({cmd2});
-
-        drawBox(cmd, bounds, 0);
-        drawBox(cmd, bounds, 1);
-        drawBox(cmd, bounds, 2);
+        imDraw->Record(cmd);
         cmd->EndRendering();
 
-        cmd->Transition(swapchain->image, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
+        cmd->Transition(swapchain->image, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, VK_PIPELINE_STAGE_2_NONE, 0);
 
         queue->Submit({cmd}, {fence}, {fence});
         queue->Present({swapchain}, {fence});

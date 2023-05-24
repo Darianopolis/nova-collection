@@ -20,5 +20,5 @@ private:
     std::vector<char> utf8Lookup;
     std::vector<char> utf32Lookup;
 
-    UnicodeCollator(const std::vector<char> utf8_lookup, const std::vector<char> utf32_lookup);
+    UnicodeCollator(const std::vector<char> utf8Lookup, const std::vector<char> utf32Lookup);
 };

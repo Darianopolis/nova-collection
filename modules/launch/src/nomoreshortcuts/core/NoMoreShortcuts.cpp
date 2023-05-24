@@ -423,8 +423,7 @@ void App::OnEvent(const overlay::Event &e)
                     overlay::Hide(*menuLayer);
                 }
             break;case MouseLButton:
-                std::cout << "MouseLButton!\n";
-                if (overlay::Mouseover(e, queryBox) ||overlay::Mouseover(e, resultsBox))
+                if (overlay::Mouseover(e, queryBox) || overlay::Mouseover(e, resultsBox))
                 {
                     std::cout << "  Over query!\n";
                     Update();
@@ -483,15 +482,20 @@ void App::OnEvent(const overlay::Event &e)
             break;case KeyBackspace:
                 if (overlay::KeyDown(e, KeyLShift)) {
                     ResetQuery();
-                } else {
+                }
+                else
+                {
                     auto& keyword = keywords[keywords.size() - 1];
                     [[maybe_unused]] auto matchBit = static_cast<uint8_t>(1 << (keywords.size() - 1));
-                    if (keyword.length() > 0) {
+                    if (keyword.length() > 0)
+                    {
                         keyword.pop_back();
                         // filter(matchBit, keyword, false);
                         resultList->Query(QueryAction::SET, JoinQuery());
                         UpdateQuery();
-                    } else if (keywords.size() > 1) {
+                    }
+                    else if (keywords.size() > 1)
+                    {
                         keywords.pop_back();
                         // tree.setMatchBits(matchBit, 0, matchBit, 0);
                         // tree.matchBits &= ~matchBit;
@@ -570,14 +574,18 @@ void App::OnEvent(const overlay::Event &e)
             {
                 auto c = static_cast<char>(e.GetCodepoint());
                 auto& keyword = keywords[keywords.size() - 1];
-                if (c == ' ') {
+                if (c == ' ')
+                {
                     if (keyword.size() == 0 || keywords.size() == 8) return;
                     [[maybe_unused]] auto set = static_cast<uint8_t>(1 << keywords.size());
                     // tree.setMatchBits(set, set, set, 0);
                     // tree.matchBits |= set;
                     keywords.push_back("");
-                } else {
-                    if (c < ' ' || c > '~') return;
+                }
+                else
+                {
+                    if (c < ' ' || c > '~')
+                        return;
                     // auto matchBit = static_cast<uint8_t>(1 << (keywords.size() - 1));
                     keyword += c;
                     // filter(matchBit, keyword, true);
