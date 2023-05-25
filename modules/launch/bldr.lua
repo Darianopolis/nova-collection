@@ -24,7 +24,18 @@ if Project "nms-v2" then
 end
 
 if Project "nms-v2-box" then
-    Compile "src/boxtest/**"
+    Compile {
+        "src/boxtest/**",
+
+        "src/nomoreshortcuts/core/Platform.cpp",
+    }
+    Include {
+        "src/common",
+        "src/indexer",
+        "src/overlay",
+        "src/nomoreshortcuts",
+        "src/nomoreshortcuts/core",
+    }
     Import {
         "nova",
     }

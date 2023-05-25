@@ -1,18 +1,4 @@
-#include <nova/rhi/nova_RHI.hpp>
-#include <nova/core/nova_Timer.hpp>
-
-#include <nova/imdraw/nova_ImDraw2D.hpp>
-
-#include <GLFW/glfw3.h>
-#include <GLFW/glfw3native.h>
-
-#include <array>
-#include <iostream>
-
-#include <windowsx.h>
-#include <shellapi.h>
-#include <wincodec.h>
-#include <CommCtrl.h>
+#include <Platform.hpp>
 
 using namespace nova::types;
 
@@ -75,103 +61,25 @@ void TryMain()
 
 // -----------------------------------------------------------------------------
 
-    CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
-    NOVA_ON_SCOPE_EXIT() { CoUninitialize(); };
-
-    IWICImagingFactory* wic;
-    CoCreateInstance(
-        CLSID_WICImagingFactory,
-        nullptr,
-        CLSCTX_INPROC_SERVER | CLSCTX_LOCAL_SERVER,
-        __uuidof(IWICImagingFactory),
-        (void**)&wic);
-    NOVA_ON_SCOPE_EXIT(&) { wic->Release(); };
-
-// -----------------------------------------------------------------------------
-
-    auto loadImage = [&](std::wstring path) -> nova::Image* {
-        HICON icon = {};
-        NOVA_ON_SCOPE_EXIT(&) { DestroyIcon(icon); };
-        SHFILEINFO info = {};
-
-        if (auto list = (HIMAGELIST)SHGetFileInfoW(path.c_str(), FILE_ATTRIBUTE_NORMAL, &info, sizeof(info), SHGFI_SYSICONINDEX))
-        {
-            icon = ImageList_GetIcon(list, info.iIcon, ILD_NORMAL);
-            ImageList_Destroy(list);
-        }
-
-        if (!icon)
-        {
-            SHGetFileInfoW(path.c_str(), FILE_ATTRIBUTE_NORMAL, &info, sizeof(info), SHGFI_ICON | SHGFI_LARGEICON);
-            icon = info.hIcon;
-
-            if (!icon)
-                return nullptr;
-        }
-
-        IWICBitmap* bitmap = nullptr;
-        wic->CreateBitmapFromHICON(icon, &bitmap);
-        NOVA_ASSERT_NONULL(bitmap);
-        NOVA_ON_SCOPE_EXIT(&) { bitmap->Release(); };
-
-        u32 width, height;
-        bitmap->GetSize(&width, &height);
-
-        IWICFormatConverter* converter = nullptr;
-        wic->CreateFormatConverter(&converter);
-        NOVA_ASSERT_NONULL(converter);
-        NOVA_ON_SCOPE_EXIT(&) { converter->Release(); };
-        converter->Initialize(
-            bitmap,
-            GUID_WICPixelFormat32bppRGBA,
-            WICBitmapDitherTypeNone,
-            nullptr, 0,
-            WICBitmapPaletteTypeMedianCut);
-
-        NOVA_LOG("Loading icon, size = ({}, {})", width, height);
-
-        usz dataSize = width * height * 4;
-        auto image = context->CreateImage(Vec3U(width, height, 0), nova::ImageUsage::Sampled, nova::Format::RGBA8U);
-        NOVA_ON_SCOPE_FAILURE(&) { context->DestroyImage(image); };
-
-        auto staging = context->CreateBuffer(dataSize, nova::BufferUsage::TransferSrc, nova::BufferFlags::CreateMapped);
-        NOVA_ON_SCOPE_EXIT(&) { context->DestroyBuffer(staging); };
-        converter->CopyPixels(nullptr, width * 4, UINT(dataSize), (BYTE*)staging->mapped);
-
-        // for (u32 x = 0; x < width; ++x)
-        // {
-        //     for (u32 y = 0; y < height; ++y)
-        //     {
-        //         u32 pixelOffset = x + (y * width);
-        //         usz byteOffset = pixelOffset * 4;
-        //         NOVA_LOG("Pixel[{}, {}] = ({}, {}, {}, {})",
-        //             x, y,
-        //             (u8)staging->mapped[byteOffset + 0],
-        //             (u8)staging->mapped[byteOffset + 1],
-        //             (u8)staging->mapped[byteOffset + 2],
-        //             (u8)staging->mapped[byteOffset + 3]);
-        //     }
-        // }
-
-        auto cmd = commandPool->BeginPrimary(tracker);
-        cmd->CopyToImage(image, staging);
-        queue->Submit({cmd}, {}, {fence});
-        fence->Wait();
-
-        return image;
+    std::array<std::filesystem::path, 5> paths {
+        "C:\\Program Files (x86)\\Steam\\steamapps\\common\\BeamNG.drive\\BeamNG.drive.exe",
+        "C:\\Users\\Darian\\AppData\\Local\\osu!\\osu!.exe",
+        "C:\\Program Files\\Cakewalk\\Cakewalk Core\\Cakewalk.exe",
+        "D:\\Dev\\Projects\\pyrite\\nova",
+        "D:\\Dev\\Projects\\nomoreshortcuts\\nomoreshortcuts-v2",
     };
 
-// -----------------------------------------------------------------------------
-
-    // auto icon = loadImage(L"C:\\Program Files (x86)\\Steam\\steamapps\\common\\BeamNG.drive\\BeamNG.drive.exe");
-
     std::array<nova::Image*, 5> icons;
-    icons[0] = loadImage(L"C:\\Program Files (x86)\\Steam\\steamapps\\common\\BeamNG.drive\\BeamNG.drive.exe");
-    icons[1] = loadImage(L"C:\\Users\\Darian\\AppData\\Local\\osu!\\osu!.exe");
-    icons[2] = loadImage(L"C:\\Program Files\\Cakewalk\\Cakewalk Core\\Cakewalk.exe");
-    icons[3] = loadImage(L"D:\\Dev\\Projects\\pyrite\\nova");
-    icons[4] = loadImage(L"D:\\Dev\\Projects\\nomoreshortcuts\\nomoreshortcuts-v2");
-    NOVA_ON_SCOPE_EXIT(&) { for (auto icon : icons) context->DestroyImage(icon); };
+    for (u32 i = 0; i < 5; ++i)
+    {
+        icons[i] = nms::LoadIconFromPath(context, commandPool, tracker, queue, fence,
+            paths[i].string());
+    }
+    NOVA_ON_SCOPE_EXIT(&) {
+        for (auto icon : icons)
+            context->DestroyImage(icon);
+    };
+
     std::array<nova::ImTextureID, 5> iconIDs;
     for (u32 i = 0; i < 5; ++i)
         iconIDs[i] = imDraw->RegisterTexture(icons[i], imDraw->defaultSampler);
@@ -206,6 +114,8 @@ void TryMain()
         f32 iconSize = 50;
         f32 iconPadding = (outputItemHeight - iconSize) / 2.f;
 
+        // Input box
+
         imDraw->DrawRect({
             .centerColor = backgroundColor,
             .borderColor = borderColor,
@@ -217,6 +127,8 @@ void TryMain()
             .texTint = { 0.f, 0.f, 0.f, 0.f },
             .texIndex = imageID,
         });
+
+        // Output box
 
         imDraw->DrawRect({
             .centerColor = backgroundColor,
@@ -230,6 +142,8 @@ void TryMain()
             .texIndex = imageID,
         });
 
+        // Highlight
+
         imDraw->DrawRect({
             .centerColor = highlightColor,
             .centerPos = pos
@@ -242,24 +156,10 @@ void TryMain()
             .texIndex = imageID,
         });
 
-        auto files = std::array {
-            "BeamNG.drive.exe",
-            "osu!.exe",
-            "Cakewalk.exe",
-            "nova",
-            "nomoreshortcuts-v2",
-        };
-
-        auto paths = std::array {
-            "C:\\Program Files (x86)\\Steam\\steamapps\\common\\BeamNG.drive",
-            "C:\\Users\\Darian\\AppData\\Local\\osu!",
-            "C:\\Program Files\\Cakewalk\\Cakewalk Core",
-            "D:\\Dev\\Projects\\pyrite",
-            "D:\\Dev\\Projects\\nomoreshortcuts",
-        };
-
         for (u32 i = 0; i < outputCount; ++i)
         {
+            // Icon
+
             imDraw->DrawRect({
                 .centerPos = pos
                     + Vec2(
@@ -273,15 +173,19 @@ void TryMain()
                 .texHalfExtent = { 0.5f, 0.5f },
             });
 
+            // Filename
+
             imDraw->DrawString(
-                files[i],
+                paths[i].filename().string(),
                 pos + Vec2(-hOutputWidth, margin + borderWidth)
                     + Vec2(0.f, outputItemHeight * i)
                     + textInset,
                 font);
 
+            // Path
+
             imDraw->DrawString(
-                paths[i],
+                paths[i].parent_path().string(),
                 pos + Vec2(-hOutputWidth, margin + borderWidth)
                     + Vec2(0.f, outputItemHeight * i)
                     + textSmallInset,
