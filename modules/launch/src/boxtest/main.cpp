@@ -9,11 +9,21 @@ void TryMain()
     glfwWindowHint(GLFW_TRANSPARENT_FRAMEBUFFER, GLFW_TRUE);
     glfwWindowHint(GLFW_DECORATED, GLFW_FALSE);
     // glfwWindowHint(GLFW_MOUSE_PASSTHROUGH, GLFW_TRUE);
-    auto window = glfwCreateWindow(1920, 1200, "next", nullptr, nullptr);
+    auto window = glfwCreateWindow(1920, 1200, "No More Shortcuts", nullptr, nullptr);
     NOVA_ON_SCOPE_EXIT(&) {
         glfwDestroyWindow(window);
         glfwTerminate();
     };
+
+    {
+        GLFWimage image;
+
+        int channels;
+        image.pixels = stbi_load("favicon.png", &image.width, &image.height, &channels, STBI_rgb_alpha);
+        NOVA_ON_SCOPE_EXIT(&) { stbi_image_free(image.pixels); };
+
+        glfwSetWindowIcon(window, 1, &image);
+    }
 
     auto context = nova::Context::Create(true);
 
@@ -21,7 +31,7 @@ void TryMain()
     auto swapchain = context->CreateSwapchain(surface,
         nova::ImageUsage::TransferDst
         | nova::ImageUsage::ColorAttach,
-        nova::PresentMode::Fifo);
+        nova::PresentMode::Mailbox);
 
     auto queue = context->graphics;
     auto commandPool = context->CreateCommandPool();
@@ -71,10 +81,7 @@ void TryMain()
 
     std::array<nova::Image*, 5> icons;
     for (u32 i = 0; i < 5; ++i)
-    {
-        icons[i] = nms::LoadIconFromPath(context, commandPool, tracker, queue, fence,
-            paths[i].string());
-    }
+        icons[i] = nms::LoadIconFromPath(context, commandPool, tracker, queue, fence, paths[i].string());
     NOVA_ON_SCOPE_EXIT(&) {
         for (auto icon : icons)
             context->DestroyImage(icon);
@@ -85,6 +92,8 @@ void TryMain()
         iconIDs[i] = imDraw->RegisterTexture(icons[i], imDraw->defaultSampler);
 
 // -----------------------------------------------------------------------------
+
+    std::string query = "BeamNG .exe";
 
     u32 selectedItem = 0;
     auto drawWindow = [&] {
@@ -127,6 +136,16 @@ void TryMain()
             .texTint = { 0.f, 0.f, 0.f, 0.f },
             .texIndex = imageID,
         });
+
+        // Input text
+
+        {
+            auto size = imDraw->MeasureString(query, font);
+
+            imDraw->DrawString(query,
+                pos - Vec2(size.x / 2.f, 17.f),
+                font);
+        }
 
         // Output box
 
@@ -198,88 +217,127 @@ void TryMain()
     bool redraw = true;
     bool skipUpdate = false;
 
-    auto lastFrame = std::chrono::steady_clock::now();
-    while (!glfwWindowShouldClose(window))
-    {
-        glfwPollEvents();
-
 // -----------------------------------------------------------------------------
 
-        if (!skipUpdate)
-        {
-            static bool upPressed = false;
-            if (glfwGetKey(window, GLFW_KEY_UP))
-            {
-                if (!upPressed)
-                {
-                    upPressed = true;
-                    selectedItem = std::max(selectedItem, 1u) - 1;
-                    redraw = true;
-                }
-            }
-            else
-                upPressed = false;
+    static auto onChar = [&](u32 codepoint) {
+        query.push_back(c8(codepoint));
+    };
+    glfwSetCharCallback(window, [](auto, u32 codepoint) { onChar(codepoint); });
 
-            static bool downPressed = false;
-            if (glfwGetKey(window, GLFW_KEY_DOWN))
-            {
-                if (!downPressed)
-                {
-                    downPressed = true;
-                    selectedItem = std::min(selectedItem, 3u) + 1;
-                    redraw = true;
-                }
-            }
-            else
-                downPressed = false;
-        }
-        else
+    static auto onKey = [&](u32 key, i32 action, u32 mods) {
+        if (skipUpdate)
+            return;
+
+        if (action == GLFW_RELEASE)
+            return;
+
+        if (key == GLFW_KEY_BACKSPACE)
         {
+            if (mods & GLFW_MOD_SHIFT)
+                query.clear();
+            else
+                query.resize(std::max(1ull, query.size()) - 1);
+
             redraw = true;
         }
-
-        skipUpdate = false;
-
-        if (!redraw)
+        else
+        if (key == GLFW_KEY_UP)
         {
-            glfwWaitEvents();
-            skipUpdate = true;
+            selectedItem = std::max(selectedItem, 1u) - 1;
+            redraw = true;
         }
-        redraw = false;
+        else
+        if (key == GLFW_KEY_DOWN)
+        {
+            selectedItem = std::min(selectedItem, 3u) + 1;
+            redraw = true;
+        }
+        else
+        if (key == GLFW_KEY_LEFT)
+        {
+            selectedItem = 0;
+            redraw = true;
+        }
+        else
+        if (key == GLFW_KEY_RIGHT)
+        {
+            selectedItem = 4;
+            redraw = true;
+        }
+    };
+    glfwSetKeyCallback(window, [](auto, i32 key, [[maybe_unused]] i32 scancode, i32 action, i32 mods) { onKey(key, action, mods); });
 
 // -----------------------------------------------------------------------------
 
-        imDraw->Reset();
 
-        drawWindow();
+    RegisterHotKey(glfwGetWin32Window(window), 1, MOD_CONTROL | MOD_SHIFT, VK_SPACE);
+
+    bool running = true;
+    while (running)
+    {
+        MSG msg = {};
+        while (GetMessage(&msg, glfwGetWin32Window(window), 0, 0) && msg.message != WM_HOTKEY);
+
+        glfwShowWindow(window);
+        glfwSetWindowShouldClose(window, GLFW_FALSE);
+
+        while (!glfwWindowShouldClose(window))
+        {
+            glfwPollEvents();
 
 // -----------------------------------------------------------------------------
 
-        // Record frame
+            if (skipUpdate)
+                redraw = true;
 
-        fence->Wait();
-        commandPool->Reset();
+            skipUpdate = false;
 
-        auto cmd = commandPool->BeginPrimary(tracker);
-        cmd->SetViewport({ imDraw->maxBounds.x - imDraw->minBounds.x, imDraw->maxBounds.y - imDraw->minBounds.y }, false);
-        cmd->SetBlendState(1, true);
-        cmd->SetTopology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
+            if (!redraw)
+            {
+                glfwWaitEvents();
+                skipUpdate = true;
+            }
+            redraw = false;
 
-        // Update window size, record primary buffer and present
+// -----------------------------------------------------------------------------
 
-        glfwSetWindowSize(window, i32(imDraw->maxBounds.x - imDraw->minBounds.x), i32(imDraw->maxBounds.y - imDraw->minBounds.y));
-        glfwSetWindowPos(window, i32(imDraw->minBounds.x), i32(imDraw->minBounds.y));
+            imDraw->Reset();
 
-        queue->Acquire({swapchain}, {fence});
+            drawWindow();
 
-        cmd->BeginRendering({swapchain->image}, {Vec4(0.f)}, true);
-        imDraw->Record(cmd);
-        cmd->EndRendering();
+// -----------------------------------------------------------------------------
 
-        cmd->Transition(swapchain->image, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, VK_PIPELINE_STAGE_2_NONE, 0);
+            // Record frame
 
-        queue->Submit({cmd}, {fence}, {fence});
-        queue->Present({swapchain}, {fence});
+            fence->Wait();
+            commandPool->Reset();
+
+            auto cmd = commandPool->BeginPrimary(tracker);
+            cmd->SetViewport({ imDraw->maxBounds.x - imDraw->minBounds.x, imDraw->maxBounds.y - imDraw->minBounds.y }, false);
+            cmd->SetBlendState(1, true);
+            cmd->SetTopology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
+
+            // Update window size, record primary buffer and present
+
+            glfwSetWindowSize(window, i32(imDraw->maxBounds.x - imDraw->minBounds.x), i32(imDraw->maxBounds.y - imDraw->minBounds.y));
+            glfwSetWindowPos(window, i32(imDraw->minBounds.x), i32(imDraw->minBounds.y));
+
+            queue->Acquire({swapchain}, {fence});
+
+            cmd->BeginRendering({swapchain->image}, {Vec4(0.f)}, true);
+            imDraw->Record(cmd);
+            cmd->EndRendering();
+
+            cmd->Transition(swapchain->image, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, VK_PIPELINE_STAGE_2_NONE, 0);
+
+            queue->Submit({cmd}, {fence}, {fence});
+            queue->Present({swapchain}, {fence});
+
+            if (glfwGetKey(window, GLFW_KEY_ESCAPE))
+                glfwSetWindowShouldClose(window, GLFW_TRUE);
+        }
+
+        glfwHideWindow(window);
     }
 }
 
@@ -289,5 +347,8 @@ int main()
     {
         TryMain();
     }
-    catch(...) {}
+    catch(...)
+    {
+        NOVA_LOG("Closing after exception");
+    }
 }
