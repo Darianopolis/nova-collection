@@ -73,7 +73,11 @@ void TryMain()
     }
     auto imageID = imDraw->RegisterTexture(image, imDraw->defaultSampler);
 
+// -----------------------------------------------------------------------------
+
     CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
+    NOVA_ON_SCOPE_EXIT() { CoUninitialize(); };
+
     IWICImagingFactory* wic;
     CoCreateInstance(
         CLSID_WICImagingFactory,
@@ -83,12 +87,14 @@ void TryMain()
         (void**)&wic);
     NOVA_ON_SCOPE_EXIT(&) { wic->Release(); };
 
+// -----------------------------------------------------------------------------
+
     auto loadImage = [&](std::wstring path) -> nova::Image* {
         HICON icon = {};
+        NOVA_ON_SCOPE_EXIT(&) { DestroyIcon(icon); };
         SHFILEINFO info = {};
 
-        auto list = (HIMAGELIST)SHGetFileInfoW(path.c_str(), FILE_ATTRIBUTE_NORMAL, &info, sizeof(info), SHGFI_SYSICONINDEX);
-        if (list)
+        if (auto list = (HIMAGELIST)SHGetFileInfoW(path.c_str(), FILE_ATTRIBUTE_NORMAL, &info, sizeof(info), SHGFI_SYSICONINDEX))
         {
             icon = ImageList_GetIcon(list, info.iIcon, ILD_NORMAL);
             ImageList_Destroy(list);
@@ -98,61 +104,64 @@ void TryMain()
         {
             SHGetFileInfoW(path.c_str(), FILE_ATTRIBUTE_NORMAL, &info, sizeof(info), SHGFI_ICON | SHGFI_LARGEICON);
             icon = info.hIcon;
+
+            if (!icon)
+                return nullptr;
         }
 
-        if (icon)
-        {
-            IWICBitmap* bitmap;
-            wic->CreateBitmapFromHICON(icon, &bitmap);
-            NOVA_ON_SCOPE_EXIT(&) { bitmap->Release(); };
+        IWICBitmap* bitmap = nullptr;
+        wic->CreateBitmapFromHICON(icon, &bitmap);
+        NOVA_ASSERT_NONULL(bitmap);
+        NOVA_ON_SCOPE_EXIT(&) { bitmap->Release(); };
 
-            u32 width, height;
-            bitmap->GetSize(&width, &height);
+        u32 width, height;
+        bitmap->GetSize(&width, &height);
 
-            IWICFormatConverter* converter;
-            wic->CreateFormatConverter(&converter);
-            NOVA_ON_SCOPE_EXIT(&) { converter->Release(); };
-            converter->Initialize(
-                bitmap,
-                GUID_WICPixelFormat32bppRGBA,
-                WICBitmapDitherTypeNone,
-                nullptr, 0,
-                WICBitmapPaletteTypeMedianCut);
+        IWICFormatConverter* converter = nullptr;
+        wic->CreateFormatConverter(&converter);
+        NOVA_ASSERT_NONULL(converter);
+        NOVA_ON_SCOPE_EXIT(&) { converter->Release(); };
+        converter->Initialize(
+            bitmap,
+            GUID_WICPixelFormat32bppRGBA,
+            WICBitmapDitherTypeNone,
+            nullptr, 0,
+            WICBitmapPaletteTypeMedianCut);
 
-            NOVA_LOG("Loading icon, size = ({}, {})", width, height);
+        NOVA_LOG("Loading icon, size = ({}, {})", width, height);
 
-            usz dataSize = width * height * 4;
-            auto image = context->CreateImage(Vec3U(width, height, 0), nova::ImageUsage::Sampled, nova::Format::RGBA8U);
-            NOVA_ON_SCOPE_FAILURE(&) { context->DestroyImage(image); };
+        usz dataSize = width * height * 4;
+        auto image = context->CreateImage(Vec3U(width, height, 0), nova::ImageUsage::Sampled, nova::Format::RGBA8U);
+        NOVA_ON_SCOPE_FAILURE(&) { context->DestroyImage(image); };
 
-            auto staging = context->CreateBuffer(dataSize, nova::BufferUsage::TransferSrc, nova::BufferFlags::CreateMapped);
-            converter->CopyPixels(nullptr, width * 4, UINT(dataSize), (BYTE*)staging->mapped);
+        auto staging = context->CreateBuffer(dataSize, nova::BufferUsage::TransferSrc, nova::BufferFlags::CreateMapped);
+        NOVA_ON_SCOPE_EXIT(&) { context->DestroyBuffer(staging); };
+        converter->CopyPixels(nullptr, width * 4, UINT(dataSize), (BYTE*)staging->mapped);
 
-            // for (u32 x = 0; x < width; ++x)
-            // {
-            //     for (u32 y = 0; y < height; ++y)
-            //     {
-            //         u32 pixelOffset = x + (y * width);
-            //         usz byteOffset = pixelOffset * 4;
-            //         NOVA_LOG("Pixel[{}, {}] = ({}, {}, {}, {})",
-            //             x, y,
-            //             (u8)staging->mapped[byteOffset + 0],
-            //             (u8)staging->mapped[byteOffset + 1],
-            //             (u8)staging->mapped[byteOffset + 2],
-            //             (u8)staging->mapped[byteOffset + 3]);
-            //     }
-            // }
+        // for (u32 x = 0; x < width; ++x)
+        // {
+        //     for (u32 y = 0; y < height; ++y)
+        //     {
+        //         u32 pixelOffset = x + (y * width);
+        //         usz byteOffset = pixelOffset * 4;
+        //         NOVA_LOG("Pixel[{}, {}] = ({}, {}, {}, {})",
+        //             x, y,
+        //             (u8)staging->mapped[byteOffset + 0],
+        //             (u8)staging->mapped[byteOffset + 1],
+        //             (u8)staging->mapped[byteOffset + 2],
+        //             (u8)staging->mapped[byteOffset + 3]);
+        //     }
+        // }
 
-            auto cmd = commandPool->BeginPrimary(tracker);
-            cmd->CopyToImage(image, staging);
-            queue->Submit({cmd}, {}, {fence});
-            fence->Wait();
+        auto cmd = commandPool->BeginPrimary(tracker);
+        cmd->CopyToImage(image, staging);
+        queue->Submit({cmd}, {}, {fence});
+        fence->Wait();
 
-            return image;
-        }
-NOVA_DEBUG();
-        return nullptr;
+        return image;
     };
+
+// -----------------------------------------------------------------------------
 
     // auto icon = loadImage(L"C:\\Program Files (x86)\\Steam\\steamapps\\common\\BeamNG.drive\\BeamNG.drive.exe");
 
@@ -167,6 +176,8 @@ NOVA_DEBUG();
     for (u32 i = 0; i < 5; ++i)
         iconIDs[i] = imDraw->RegisterTexture(icons[i], imDraw->defaultSampler);
 
+// -----------------------------------------------------------------------------
+
     u32 selectedItem = 0;
     auto drawWindow = [&] {
 
@@ -176,8 +187,7 @@ NOVA_DEBUG();
 
         Vec2 pos = { mWidth * 0.5f, mHeight * 0.5f };
 
-        f32 hInputWidth = 960.f;
-        f32 hInputHeight = 29.f;
+        Vec2 hInputSize = { 960.f, 29.f };
 
         f32 outputItemHeight = 76.f;
         u32 outputCount = 5;
@@ -199,8 +209,8 @@ NOVA_DEBUG();
         imDraw->DrawRect({
             .centerColor = backgroundColor,
             .borderColor = borderColor,
-            .centerPos = pos - Vec2(0.f, hInputHeight),
-            .halfExtent = Vec2(hInputWidth, hInputHeight) + Vec2(borderWidth),
+            .centerPos = pos - Vec2(0.f, hInputSize.y),
+            .halfExtent = hInputSize + Vec2(borderWidth),
             .cornerRadius = cornerRadius,
             .borderWidth = borderWidth,
 
@@ -241,11 +251,11 @@ NOVA_DEBUG();
         };
 
         auto paths = std::array {
-            "C:/Program Files (x86)/Steam/steamapps/common/BeamNG.drive",
-            "C:/Users/Darian/AppData/Local/osu!",
-            "C:/Program Files/Cakewalk/Cakewalk Core",
-            "D:/Dev/Projects/pyrite",
-            "D:/Dev/Projects/nomoreshortcuts",
+            "C:\\Program Files (x86)\\Steam\\steamapps\\common\\BeamNG.drive",
+            "C:\\Users\\Darian\\AppData\\Local\\osu!",
+            "C:\\Program Files\\Cakewalk\\Cakewalk Core",
+            "D:\\Dev\\Projects\\pyrite",
+            "D:\\Dev\\Projects\\nomoreshortcuts",
         };
 
         for (u32 i = 0; i < outputCount; ++i)
@@ -278,6 +288,8 @@ NOVA_DEBUG();
                 fontSmall);
         }
     };
+
+// -----------------------------------------------------------------------------
 
     bool redraw = true;
     bool skipUpdate = false;
