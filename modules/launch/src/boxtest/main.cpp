@@ -8,12 +8,19 @@ void TryMain()
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
     glfwWindowHint(GLFW_TRANSPARENT_FRAMEBUFFER, GLFW_TRUE);
     glfwWindowHint(GLFW_DECORATED, GLFW_FALSE);
-    // glfwWindowHint(GLFW_MOUSE_PASSTHROUGH, GLFW_TRUE);
     auto window = glfwCreateWindow(1920, 1200, "No More Shortcuts", nullptr, nullptr);
     NOVA_ON_SCOPE_EXIT(&) {
         glfwDestroyWindow(window);
         glfwTerminate();
     };
+
+    HWND hwnd = glfwGetWin32Window(window);
+    SetWindowLongW(hwnd, GWL_EXSTYLE, GetWindowLongW(hwnd, GWL_EXSTYLE) | WS_EX_LAYERED);
+
+    // TODO: Chroma key is an ugly hack, use nchittest to do analytical transparency
+    //   Or, do full screeen pass to filter out unintentional chroma key matches and
+    //   apply chroma key based on alpha.
+    SetLayeredWindowAttributes(hwnd, RGB(1, 1, 1), 0, LWA_COLORKEY);
 
     {
         GLFWimage image;
@@ -27,7 +34,7 @@ void TryMain()
 
     auto context = nova::Context::Create(true);
 
-    auto surface = context->CreateSurface(glfwGetWin32Window(window));
+    auto surface = context->CreateSurface(hwnd);
     auto swapchain = context->CreateSwapchain(surface,
         nova::ImageUsage::TransferDst
         | nova::ImageUsage::ColorAttach,
@@ -270,13 +277,13 @@ void TryMain()
 // -----------------------------------------------------------------------------
 
 
-    RegisterHotKey(glfwGetWin32Window(window), 1, MOD_CONTROL | MOD_SHIFT, VK_SPACE);
+    RegisterHotKey(hwnd, 1, MOD_CONTROL | MOD_SHIFT, VK_SPACE);
 
     bool running = true;
     while (running)
     {
         MSG msg = {};
-        while (GetMessage(&msg, glfwGetWin32Window(window), 0, 0) && msg.message != WM_HOTKEY);
+        while (GetMessage(&msg, hwnd, 0, 0) && msg.message != WM_HOTKEY);
 
         glfwShowWindow(window);
         glfwSetWindowShouldClose(window, GLFW_FALSE);
@@ -324,7 +331,7 @@ void TryMain()
 
             queue->Acquire({swapchain}, {fence});
 
-            cmd->BeginRendering({swapchain->image}, {Vec4(0.f)}, true);
+            cmd->BeginRendering({swapchain->image}, {Vec4(Vec3(1.f / 255.f), 0.f)}, true);
             imDraw->Record(cmd);
             cmd->EndRendering();
 
