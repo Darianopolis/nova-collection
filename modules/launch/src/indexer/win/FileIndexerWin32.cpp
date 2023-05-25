@@ -1,5 +1,7 @@
 #include "FileIndexer.hpp"
 
+#include <nova/core/nova_Core.hpp>
+
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
 #include <Windows.h>
@@ -19,7 +21,8 @@ struct WinIndexer
     static void Index(Node* node, const wchar_t* root)
     {
         WinIndexer s(root);
-        std::wcout << "Indexing " << root << L"\n";
+        std::wcout << L"Indexing " << root;
+        std::cout << '\n';
         s.Search(node, wcslen(root), 0);
     }
 
@@ -40,7 +43,10 @@ struct WinIndexer
             FIND_FIRST_EX_LARGE_FETCH);
 
         if (findHandle == INVALID_HANDLE_VALUE)
+        {
+            // NOVA_LOG("Invalid handle!");
             return;
+        }
 
         do
         {
@@ -92,6 +98,7 @@ struct WinIndexer
 
 Node* IndexDrive(char driverLetter)
 {
+    NOVA_LOG("Indexing drive: {}", driverLetter);
     char upper = (char)std::toupper(driverLetter);
 
     std::cout << "Drive letter = " << upper << '\n';

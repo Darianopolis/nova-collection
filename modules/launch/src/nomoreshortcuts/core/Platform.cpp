@@ -19,11 +19,13 @@ namespace nms
 
 // -----------------------------------------------------------------------------
 
-    struct IconLoaderThreadState
+    struct ComState
     {
         IWICImagingFactory* wic;
 
-        IconLoaderThreadState()
+        ankerl::unordered_dense::map<u64, nova::Image*> imageCache;
+
+        ComState()
         {
             CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
 
@@ -35,14 +37,14 @@ namespace nms
                 (void**)&wic);
         }
 
-        ~IconLoaderThreadState()
+        ~ComState()
         {
             wic->Release();
             CoUninitialize();
         }
     };
 
-    static thread_local IconLoaderThreadState NmsIconLoaderThreadState = {};
+    static thread_local ComState NmsComState = {};
 
     nova::Image* LoadIconFromPath(
         nova::Context* context,
@@ -52,6 +54,8 @@ namespace nms
         nova::Fence* fence,
         std::string_view path)
     {
+        // Query shell for path icon
+
         HICON icon = {};
         NOVA_ON_SCOPE_EXIT(&) { DestroyIcon(icon); };
 
@@ -80,15 +84,17 @@ namespace nms
                 return nullptr;
         }
 
+        // Extract image data from icon
+
         IWICBitmap* bitmap = nullptr;
-        NmsIconLoaderThreadState.wic->CreateBitmapFromHICON(icon, &bitmap);
+        NmsComState.wic->CreateBitmapFromHICON(icon, &bitmap);
         NOVA_ON_SCOPE_EXIT(&) { bitmap->Release(); };
 
         u32 width, height;
         bitmap->GetSize(&width, &height);
 
         IWICFormatConverter* converter = nullptr;
-        NmsIconLoaderThreadState.wic->CreateFormatConverter(&converter);
+        NmsComState.wic->CreateFormatConverter(&converter);
         NOVA_ON_SCOPE_EXIT(&) { converter->Release(); };
         converter->Initialize(
             bitmap,
@@ -97,20 +103,34 @@ namespace nms
             nullptr, 0,
             WICBitmapPaletteTypeMedianCut);
 
-        NOVA_LOG("Loading icon {}, size = ({}, {})", path, width, height);
-
         usz dataSize = width * height * 4;
-        auto image = context->CreateImage(Vec3U(width, height, 0),
+        auto pixelData = NOVA_ALLOC_STACK(BYTE, dataSize);
+        converter->CopyPixels(nullptr, width * 4, UINT(dataSize), pixelData);
+
+        // Hash and check to find matching existing image
+
+        u64 hash = ankerl::unordered_dense::detail::wyhash::hash(pixelData, dataSize);
+        auto& image = NmsComState.imageCache[hash];
+        if (image)
+            return image;
+
+        NOVA_LOG("Loading icon {}, size = ({}, {})", path, width, height);
+        NOVA_LOG("  Num images = {}", NmsComState.imageCache.size());
+
+        image = context->CreateImage(Vec3U(width, height, 0),
             nova::ImageUsage::Sampled,
             nova::Format::RGBA8U);
-        NOVA_ON_SCOPE_FAILURE(&) { context->DestroyImage(image); };
+        NOVA_ON_SCOPE_FAILURE(&) {
+            context->DestroyImage(image);
+            image = nullptr;
+        };
 
         auto staging = context->CreateBuffer(dataSize,
             nova::BufferUsage::TransferSrc,
             nova::BufferFlags::CreateMapped);
         NOVA_ON_SCOPE_EXIT(&) { context->DestroyBuffer(staging); };
 
-        converter->CopyPixels(nullptr, width * 4, UINT(dataSize), (BYTE*)staging->mapped);
+        std::memcpy(staging->mapped, pixelData, dataSize);
 
         auto cmd = cmdPool->BeginPrimary(tracker);
         cmd->CopyToImage(image, staging);

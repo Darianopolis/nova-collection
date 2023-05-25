@@ -436,6 +436,9 @@ public:
             std::cout << "Flattened nodes in " << duration_cast<milliseconds>(steady_clock::now() - start) << '\n';
 
             start = steady_clock::now();
+            // FIXME: This is an intentional leak
+            for (auto& r : roots)
+                r.release();
         }
         std::cout << "Destroyed temporary nodes in " << duration_cast<milliseconds>(steady_clock::now() - start) << '\n';
     }
