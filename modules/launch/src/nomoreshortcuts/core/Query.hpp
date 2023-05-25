@@ -4,8 +4,9 @@
 
 #include <sqlite3.h>
 #include <PathTree.hpp>
-#include <ScopeGuards.hpp>
 #include <FileIndexer.hpp>
+
+#include <nova/core/nova_Core.hpp>
 
 #include <string>
 #include <filesystem>
@@ -206,7 +207,7 @@ public:
     void Create()
     {
         sqlite3* db{nullptr};
-        ON_SCOPE_EXIT(&) {
+        NOVA_ON_SCOPE_EXIT(&) {
             sqlite3_close(db);
         };
 
@@ -220,7 +221,7 @@ public:
     void Load()
     {
         sqlite3* db{nullptr};
-        ON_SCOPE_EXIT(&) {
+        NOVA_ON_SCOPE_EXIT(&) {
             sqlite3_close(db);
         };
 
@@ -244,7 +245,7 @@ public:
     {
         sqlite3* db{nullptr};
         sqlite3_stmt* stmt{nullptr};
-        ON_SCOPE_FAILURE(&) {
+        NOVA_ON_SCOPE_FAILURE(&) {
             sqlite3_finalize(stmt);
             sqlite3_close(db);
         };
@@ -273,7 +274,7 @@ public:
     {
         sqlite3* db{nullptr};
         sqlite3_stmt* stmt{nullptr};
-        ON_SCOPE_FAILURE(&) {
+        NOVA_ON_SCOPE_FAILURE(&) {
             sqlite3_finalize(stmt);
             sqlite3_close(db);
         };
