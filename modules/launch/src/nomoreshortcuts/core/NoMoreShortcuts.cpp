@@ -24,7 +24,7 @@ App::App()
     // TODO: Chroma key is an ugly hack, use nchittest to do analytical transparency
     //   Or, do full screeen pass to filter out unintentional chroma key matches and
     //   apply chroma key based on alpha.
-    SetLayeredWindowAttributes(hwnd, RGB(1, 0, 0), 0, LWA_COLORKEY);
+    SetLayeredWindowAttributes(hwnd, RGB(0, 1, 0), 0, LWA_COLORKEY);
 
     {
         GLFWimage iconImage;
@@ -36,13 +36,15 @@ App::App()
         glfwSetWindowIcon(window, 1, &iconImage);
     }
 
-    context = nova::Context::Create(true);
+    context = nova::Context::Create({
+        .debug = false,
+    });
 
     surface = context->CreateSurface(hwnd);
     swapchain = context->CreateSwapchain(surface,
         nova::ImageUsage::TransferDst
         | nova::ImageUsage::ColorAttach,
-        nova::PresentMode::Mailbox);
+        nova::PresentMode::Fifo);
 
     queue = context->graphics;
     commandPool = context->CreateCommandPool();
@@ -64,20 +66,6 @@ App::App()
 
     font = imDraw->LoadFont("SEGUISB.TTF", 35.f, commandPool, tracker, fence, queue);
     fontSmall = imDraw->LoadFont("SEGOEUI.TTF", 18.f, commandPool, tracker, fence, queue);
-
-    emptyImage = context->CreateImage({ 1, 1, 0 }, nova::ImageUsage::Sampled, nova::Format::RGBA8U);
-    {
-        auto staging = context->CreateBuffer(4, nova::BufferUsage::Storage, nova::BufferFlags::CreateMapped);
-        staging->Get<std::array<u8, 4>>(0) = { 0, 0, 0, 0 };
-
-        auto cmd = commandPool->BeginPrimary(tracker);
-        cmd->CopyToImage(emptyImage, staging);
-        queue->Submit({cmd}, {}, {fence});
-        fence->Wait();
-
-        context->DestroyBuffer(staging);
-    }
-    emptyTexID = imDraw->RegisterTexture(emptyImage, imDraw->defaultSampler);
 
 // -----------------------------------------------------------------------------
 // -----------------------------------------------------------------------------
@@ -147,11 +135,6 @@ void App::ResetQuery()
     UpdateQuery();
 }
 
-void App::Update()
-{
-    // overlay::Update(*mainLayer, *this, menu.visible);
-}
-
 std::string App::JoinQuery()
 {
     auto str = std::string{};
@@ -170,12 +153,7 @@ std::string App::JoinQuery()
 
 void App::UpdateQuery()
 {
-    // queryText.text = JoinQuery();
-    // queryText.Layout(*stage, true);
-    // queryBox.size.y = queryText.size.y + 20;
-
     ResetItems();
-    Update();
 }
 
 void App::Move(int delta)
@@ -188,11 +166,6 @@ void App::Move(int delta)
     else if (i > 0)
     {
         while (MoveSelectedDown() && --i > 0);
-    }
-
-    if (delta != i)
-    {
-        Update();
     }
 }
 
@@ -306,21 +279,20 @@ void App::Draw()
         .halfExtent = hInputSize + Vec2(borderWidth),
         .cornerRadius = cornerRadius,
         .borderWidth = borderWidth,
-
-        .texTint = { 0.f, 0.f, 0.f, 0.f },
-        .texIndex = emptyTexID,
     });
 
     // Input text
 
     {
         auto query = JoinQuery();
+        auto bounds = imDraw->MeasureString(query, font);
 
-        auto size = imDraw->MeasureString(query, font);
-
-        imDraw->DrawString(query,
-            pos - Vec2(size.x / 2.f, 17.f),
-            font);
+        if (!bounds.Empty())
+        {
+            imDraw->DrawString(query,
+                pos - Vec2(bounds.Width() / 2.f, 17.f),
+                font);
+        }
     }
 
     if (items.empty())
@@ -335,9 +307,6 @@ void App::Draw()
         .halfExtent = Vec2(hOutputWidth, hOutputHeight) + Vec2(borderWidth),
         .cornerRadius = cornerRadius,
         .borderWidth = borderWidth,
-
-        .texTint = { 0.f, 0.f, 0.f, 0.f },
-        .texIndex = emptyTexID,
     });
 
     // Highlight
@@ -349,9 +318,6 @@ void App::Draw()
         .halfExtent = Vec2(hOutputWidth, outputItemHeight * 0.5f)
             - Vec2(2.f),
         .cornerRadius = cornerRadius - borderWidth - 2.f,
-
-        .texTint = { 0.f, 0.f, 0.f, 0.f },
-        .texIndex = emptyTexID,
     });
 
     for (u32 i = 0; i < outputCount; ++i)
@@ -369,27 +335,28 @@ void App::Draw()
                 context, commandPool, tracker, queue, fence,
                 path.string());
 
-            icon->texID = icon->image
-                ? imDraw->RegisterTexture(icon->image, imDraw->defaultSampler)
-                : emptyTexID;
+            if (icon->image)
+                icon->texID = imDraw->RegisterTexture(icon->image, imDraw->defaultSampler);
         }
         else
         {
             icon = &iter->second;
         }
 
-        imDraw->DrawRect({
-            .centerPos = pos
-                + Vec2(
-                    -hOutputWidth + (iconSize / 2.f) + iconPadding,
-                    margin + borderWidth + outputItemHeight * (0.5f + i)),
-            .halfExtent = Vec2(iconSize) / 2.f,
+        if (icon->image)
+        {
+            imDraw->DrawRect({
+                .centerPos = pos
+                    + Vec2(-hOutputWidth + (iconSize / 2.f) + iconPadding,
+                        margin + borderWidth + outputItemHeight * (0.5f + i)),
+                .halfExtent = Vec2(iconSize) / 2.f,
 
-            .texTint = { 1.f, 1.f, 1.f, 1.f },
-            .texIndex = icon->texID,
-            .texCenterPos = { 0.5f, 0.5f },
-            .texHalfExtent = { 0.5f, 0.5f },
-        });
+                .texTint = Vec4(1.f),
+                .texIndex = icon->texID,
+                .texCenterPos = { 0.5f, 0.5f },
+                .texHalfExtent = { 0.5f, 0.5f },
+            });
+        }
 
         // Filename
 
@@ -456,25 +423,32 @@ void App::Run()
             imDraw->Reset();
             Draw();
 
-// -----------------------------------------------------------------------------
+            // Wait for frame
 
             fence->Wait();
             commandPool->Reset();
 
+            // Record commands
+
+            auto cmd2 = commandPool->BeginSecondary(tracker, nova::RenderingDescription {
+                .colorFormats = { nova::Format(swapchain->format.format) },
+            });
+            imDraw->Record(cmd2);
+            cmd2->End();
+
             auto cmd = commandPool->BeginPrimary(tracker);
-            cmd->SetViewport({ imDraw->maxBounds.x - imDraw->minBounds.x, imDraw->maxBounds.y - imDraw->minBounds.y }, false);
+            cmd->SetViewport(imDraw->bounds.Size(), false);
             cmd->SetBlendState(1, true);
-            cmd->SetTopology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
 
             // Update window size, record primary buffer and present
 
-            glfwSetWindowSize(window, i32(imDraw->maxBounds.x - imDraw->minBounds.x), i32(imDraw->maxBounds.y - imDraw->minBounds.y));
-            glfwSetWindowPos(window, i32(imDraw->minBounds.x), i32(imDraw->minBounds.y));
+            glfwSetWindowSize(window, i32(imDraw->bounds.Width()), i32(imDraw->bounds.Height()));
+            glfwSetWindowPos(window, i32(imDraw->bounds.min.x), i32(imDraw->bounds.min.y));
 
             queue->Acquire({swapchain}, {fence});
 
-            cmd->BeginRendering({swapchain->image}, {Vec4(1.f / 255.f, 0.f, 0.f, 0.f)}, true);
-            imDraw->Record(cmd);
+            cmd->BeginRendering({swapchain->image}, {Vec4(0.f, 1.f / 255.f, 0.f, 0.f)}, true);
+            cmd->ExecuteCommands({cmd2});
             cmd->EndRendering();
 
             cmd->Transition(swapchain->image, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, VK_PIPELINE_STAGE_2_NONE, 0);
@@ -533,14 +507,12 @@ void App::OnKey(u32 key, i32 action, i32 mods)
     // break;case MouseLButton:
     //     if (overlay::Mouseover(e, queryBox) || overlay::Mouseover(e, resultsBox))
     //     {
-    //         std::cout << "  Over query!\n";
     //         Update();
     //         overlay::Focus(*mainLayer);
     //     }
 
     //     if (menu.visible && overlay::Mouseover(e, menu))
     //     {
-    //         std::cout << "Hiding menu!\n";
     //         overlay::Quit(*stage, 0);
     //     }
     //     else
@@ -554,16 +526,14 @@ void App::OnKey(u32 key, i32 action, i32 mods)
         Move(-1);
     break;case GLFW_KEY_LEFT:
         ResetItems();
-        Update();
     break;case GLFW_KEY_RIGHT:
         ResetItems(true);
-        Update();
     break;case GLFW_KEY_ENTER: {
         if (!items.empty())
         {
             auto view = items[selection].get();
             auto str = view->GetPath().string();
-            std::cout << std::format("Running {}!\n", str);
+            NOVA_LOG("Running {}!", str);
 
             favResultList->IncrementUses(view->GetPath());
             ResetQuery();
@@ -616,7 +586,7 @@ void App::OnKey(u32 key, i32 action, i32 mods)
         {
             auto view = items[selection].get();
             auto str = view->GetPath().string();
-            std::cout << std::format("Copying {}!\n", str);
+            NOVA_LOG("Copying {}!", str);
 
             OpenClipboard(glfwGetWin32Window(window));
             EmptyClipboard();
@@ -651,13 +621,12 @@ void App::OnKey(u32 key, i32 action, i32 mods)
                     {
                         auto* node = IndexDrive(d);
                         auto saveLoc = std::format("{}\\.nms\\{}.index", getenv("USERPROFILE"), d);
-                        std::cout << std::format("Saving to {}\n", saveLoc);
+                        NOVA_LOG("Saving to {}", saveLoc);
                         (void)node;
                         node->Save(saveLoc);
                     }
 
-                    std::cout << "Indexing complete. Close this window and refresh the index with F5 in app.\n";
-                    std::cout.flush();
+                    NOVA_LOG("Indexing complete. Close this window and refresh the index with F5 in app.");
                     FreeConsole();
 
                     indexing = false;
@@ -680,101 +649,37 @@ void App::OnKey(u32 key, i32 action, i32 mods)
     }
 }
 
-// void App::OnEvent(const overlay::Event &e)
-// {
-//     using namespace overlay::Events;
+// -----------------------------------------------------------------------------
+//                               Entry point
+// -----------------------------------------------------------------------------
 
-//     // if (e.event() != MouseMoved) {
-//     //   std::cout << std::format("Event - {}\n",
-//     //       magic_enum::enum_name<EventID>(e.event()));
-//     // }
-
-//     switch (e.event)
-//     {
-//     break;case IconsLoaded:
-//         Update();
-//     break;case Hotkey:
-//         show = true;
-//         Update();
-//         overlay::Focus(*mainLayer);
-//     break;case NotifyContext:
-//         {
-//             menu.visible = true;
-//             menu.anchor = {
-//                 overlay::GetScreen(*stage),
-//                 overlay::Alignments::TopLeft,
-//                 *overlay::GetMousePos(e) + overlay::Vec{50, -10},
-//                 overlay::Alignments::BottomRight
-//             };
-
-//             overlay::Update(*menuLayer, *this, menu.visible);
-//             overlay::Focus(*menuLayer);
-//         }
-//     break;case FocusLost:
-//         if (menu.visible)
-//         {
-//             std::cout << "Lost menu focus!\n";
-//             menu.visible = false;
-
-//             // // Need to hide main window to prevent issue with window layers not being properly adjusted
-//             // // This won't be required once the menu is rendered in a different layer!
-//             // show = false;
-//             // update();
-
-//             overlay::Hide(*menuLayer);
-//         }
-//     break;case KeyPressed:
-//         {
-//             using enum overlay::KeyCode;
-
-
-//         }
-//     break;case MouseScroll:
-//         Move((int)-e.GetDelta().y);
-//     break;case MouseMoved:
-//         if (menu.visible)
-//         {
-//             auto next = overlay::Mouseover(e, menu.highlight);
-//             if (next != menu.highlight.visible)
-//             {
-//                 menu.highlight.visible = next;
-//                 overlay::Update(*menuLayer, menu, true);
-//             }
-//         }
-//     }
-// }
-
-// ------------------------------------------------------------------------- //
-// ------------------------------------------------------------------------- //
-// ------------------------------------------------------------------------- //
-// ------------------------------------------------------------------------- //
-// ------------------------------------------------------------------------- //
-// ------------------------------------------------------------------------- //
-
-int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
-// int main()
+void Main()
 {
     try
     {
         CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
-
-        // auto stage = overlay::CreateStage();
-        // auto app = App{&stage};
-
-        // return overlay::Run(stage, [&](const overlay::Event& e) {
-        //     app.OnEvent(e);
-        // });
 
         App app;
         app.Run();
     }
     catch (std::exception& e)
     {
-        std::cout << "Error: " << e.what() << '\n';
+        NOVA_LOG("Error: {}", e.what());
     }
     catch (...)
     {
-        std::cout << "Something went wrong!";
+        NOVA_LOG("Something went wrong!");
     }
-    return 1;
+}
+
+int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
+{
+    Main();
+    return 0;
+}
+
+int main()
+{
+    Main();
+    return 0;
 }

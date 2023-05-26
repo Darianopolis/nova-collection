@@ -201,7 +201,7 @@ public:
     {
         Create();
         Load();
-        std::cout << " dir: " << appDb << '\n';
+        NOVA_LOG(" dir: {}", appDb);
     }
 
     void Create()
@@ -232,7 +232,7 @@ public:
                 db,
                 "SELECT path FROM favourites ORDER BY uses DESC",
                 [](void* list, int, char** val, char**) {
-                    std::cout << std::format("path = {}\n", val[0]);
+                    NOVA_LOG("path = {}", val[0]);
                     auto& fav = *static_cast<std::vector<std::unique_ptr<FavResultItem>>*>(list);
                     fav.push_back(std::make_unique<FavResultItem>(val[0]));
                     return 0;
@@ -420,7 +420,7 @@ public:
             auto* d = Node::Load(getenv("USERPROFILE") + std::string("\\.nms\\D.index"));
             if (c) roots.emplace_back(c);
             if (d) roots.emplace_back(d);
-            std::cout << "Loaded nodes in " << duration_cast<milliseconds>(steady_clock::now() - start) << '\n';
+            NOVA_LOG("Loaded nodes in {}", duration_cast<milliseconds>(steady_clock::now() - start));
 
             start = steady_clock::now();
             std::vector<NodeView> flat;
@@ -430,24 +430,23 @@ public:
             std::sort(std::execution::par_unseq, flat.begin(), flat.end(), [](auto& l, auto& r) {
                 return Node::CompareDepthLenLex(*l.node, *r.node) == std::weak_ordering::less;
             });
-            std::cout << "Sorted nodes in " << duration_cast<milliseconds>(steady_clock::now() - start) << '\n';
+            NOVA_LOG("Sorted nodes in {}", duration_cast<milliseconds>(steady_clock::now() - start));
 
             start = steady_clock::now();
             index = Flatten(flat);
-            std::cout << "Flattened nodes in " << duration_cast<milliseconds>(steady_clock::now() - start) << '\n';
+            NOVA_LOG("Flattened nodes in {}", duration_cast<milliseconds>(steady_clock::now() - start));
 
             start = steady_clock::now();
-            // FIXME: This is an intentional leak
-            for (auto& r : roots)
-                r.release();
         }
-        std::cout << "Destroyed temporary nodes in " << duration_cast<milliseconds>(steady_clock::now() - start) << '\n';
+        NOVA_LOG("Destroyed temporary nodes in {}", duration_cast<milliseconds>(steady_clock::now() - start));
+        NOVA_LOG("Nodes created   = {}", nodesCreated);
+        NOVA_LOG("Nodes destroyed = {}", nodesDestroyed);
+        mi_collect(true);
     }
 
     void Filter(uint8_t matchBit, std::string_view keyword, bool lazy)
     {
-        std::cout << "refiltering on keyword, [" << keyword << "] lazy = " << lazy << '\n';
-        // std::cout << std::format("    match bit = {:08b}\n", matchBit);
+        NOVA_LOG("Refiltering on keyword, [{}] lazy = {}", keyword, lazy);
 
         auto needle = std::string{keyword};
         std::transform(needle.begin(), needle.end(), needle.begin(), [](char c) {
@@ -476,7 +475,7 @@ public:
                     : view.match & ~matchBit;
             });
         }
-        std::cout << "  indexed in " << duration_cast<milliseconds>(steady_clock::now() - start) << '\n';
+        NOVA_LOG("  indexed in {}", duration_cast<milliseconds>(steady_clock::now() - start));
 
         auto start2 = steady_clock::now();
         for (auto& n : index.nodes)
@@ -486,13 +485,8 @@ public:
                 ? parent.inheritedMatch | n.match : n.match;
         }
         auto end = steady_clock::now();
-        std::cout << "  propogated in " << duration_cast<milliseconds>(end - start2) << '\n';
-        std::cout << "  total = " << duration_cast<milliseconds>(end - start) << '\n';
-
-        // size_t total = std::count_if(index.nodes.begin(), index.nodes.end(), [&](auto& n) {
-        //   return (n.match & match_bits) == match_bits;
-        // });
-        // std::cout << "total = " << total << '\n';
+        NOVA_LOG("  propogated in {}", duration_cast<milliseconds>(end - start2));
+        NOVA_LOG("  total = {}", duration_cast<milliseconds>(end - start));
     }
 
     std::string MakeString(uint32_t i)
@@ -509,7 +503,6 @@ public:
 
     void Query(QueryAction, std::string_view _query)
     {
-        // std::cout << std::format("before query, match bits = {:08b}\n", match_bits);
         auto query = std::string(_query);
         std::regex words{"\\S+"};
         std::vector<std::string> new_keywords;
@@ -527,7 +520,6 @@ public:
             if (i >= keywords.size())
             {
                 // New keyword, update tree match bits
-                // std::cout << "Adding new keyword [" << new_keywords[i] << "]\n";
                 std::for_each(std::execution::par_unseq, index.nodes.begin(), index.nodes.end(), [&](NodeFlat& p) {
                     p.match |= matchBit;
                     p.inheritedMatch &= ~matchBit;
@@ -547,7 +539,6 @@ public:
         for (auto i = new_keywords.size(); i < keywords.size(); ++i)
         {
             auto matchBit = static_cast<uint8_t>(1 << i);
-            // std::cout << "Clearing old keyword [" << keywords[i] << "]\n";
             std::for_each(std::execution::par_unseq, index.nodes.begin(), index.nodes.end(), [&](NodeFlat& p) {
                 p.match &= ~matchBit;
                 p.inheritedMatch &= ~matchBit;
@@ -556,7 +547,6 @@ public:
         }
 
         keywords = std::move(new_keywords);
-        // std::cout << std::format("  After query, match bits = {:08b}\n", match_bits);
     }
 
     std::unique_ptr<ResultItem> Next(const ResultItem* item) override

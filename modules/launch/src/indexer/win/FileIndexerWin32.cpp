@@ -21,8 +21,7 @@ struct WinIndexer
     static void Index(Node* node, const wchar_t* root)
     {
         WinIndexer s(root);
-        std::wcout << L"Indexing " << root;
-        std::cout << '\n';
+        std::wcout << L"Indexing " << root << L'\n';
         s.Search(node, wcslen(root), 0);
     }
 
@@ -101,13 +100,13 @@ Node* IndexDrive(char driverLetter)
     NOVA_LOG("Indexing drive: {}", driverLetter);
     char upper = (char)std::toupper(driverLetter);
 
-    std::cout << "Drive letter = " << upper << '\n';
+    NOVA_LOG("Drive letter = {}", upper);
 
     auto* node = new Node(new char[] { upper, ':', '\\', '\0' }, 3, nullptr, 0);
     wchar_t init[] { L'\\', L'\\', L'?', L'\\', static_cast<wchar_t>(upper), L':', };
     WinIndexer::Index(node, init);
 
-    std::cout << "Indexed!\n";
+    NOVA_LOG("Indexed!");
 
     return node;
 

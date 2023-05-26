@@ -35,9 +35,6 @@ struct Index
 
     void Filter(uint8_t matchBit, std::string_view keyword, bool lazy)
     {
-        // std::cout << "refiltering on keyword, [" << keyword << "] lazy = " << lazy << '\n';
-        // std::cout << std::format("    match bit = {:08b}\n", matchBit);
-
         auto needle = std::string{keyword};
         std::transform(needle.begin(), needle.end(), needle.begin(), [](char c) {
             return (char)std::tolower(c);
@@ -59,7 +56,6 @@ struct Index
 
     void Query(std::string query)
     {
-        // std::cout << std::format("before query, match bits = {:08b}\n", tree.matchBits);
         std::regex words{"\\S+"};
         std::vector<std::string> newKeywords;
 
@@ -91,13 +87,11 @@ struct Index
         // Clear any remaining keywords!
         for (auto i = newKeywords.size(); i < keywords.size(); ++i)
         {
-            // std::cout << "Clearing old keyword [" << keywords[i] << "]\n";
             auto matchBit = static_cast<uint8_t>(1 << i);
             tree.SetMatchBits(matchBit, 0, matchBit, 0);
             tree.matchBits &= ~matchBit;
         }
 
         keywords = std::move(newKeywords);
-        // std::cout << std::format("  After query, match bits = {:08b}\n", tree.matchBits);
     }
 };

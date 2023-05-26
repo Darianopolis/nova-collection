@@ -3,55 +3,6 @@
 #include <unordered_map>
 #include <ranges>
 
-NodeIterator::NodeIterator(Node* initial, size_t index)
-    : nodes{NodeIteratorRef(initial, index)}
-{}
-
-NodeIterator::NodeIterator(const NodeIterator& i)
-    : nodes(i.nodes)
-{}
-
-Node& NodeIterator::operator*() const noexcept
-{
-    return *nodes.back().node;
-}
-
-Node* NodeIterator::operator->() const noexcept
-{
-    return nodes.back().node;
-}
-
-NodeIterator& NodeIterator::operator++()
-{
-    NodeIteratorRef* ref = &nodes.back();
-
-    if (ref->index < ref->node->numChildren)
-    {
-        nodes.emplace_back(ref->node->children[ref->index++], 0);
-    }
-    else if (nodes.size() > 1)
-    {
-        do
-        {
-            nodes.pop_back();
-            ref = &nodes.back();
-        }
-        while (nodes.size() > 1 && ref->index == ref->node->numChildren);
-
-        if (ref->index < ref->node->numChildren)
-        {
-            nodes.emplace_back(ref->node->children[ref->index++], 0);
-        }
-    }
-
-    return *this;
-}
-
-bool operator==(const NodeIterator &l, const NodeIterator& r)
-{
-    return l.nodes.back() == r.nodes.back();
-}
-
 NodeIndex Flatten(std::vector<NodeView> nodes) {
     std::vector<NodeFlat> flattened;
     std::string str;
@@ -86,8 +37,8 @@ NodeIndex Flatten(std::vector<NodeView> nodes) {
             view.node->len);
     }
 
-    std::cout << "   flattened str = " << str.size() << '\n';
-    std::cout << "   flattened nodes = " << nodes.size() << '\n';
+    NOVA_LOG("   flattened str = {}", str.size());
+    NOVA_LOG("   flattened nodes = {}", nodes.size());
 
     return NodeIndex(std::move(flattened), std::move(str));
 }

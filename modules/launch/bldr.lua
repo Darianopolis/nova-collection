@@ -14,4 +14,5 @@ if Project "nms-v2" then
     }
 
     Artifact { "out/NoMoreShortcuts", type = "Window" }
+    Artifact { "out/nms", type = "Console" }
 end

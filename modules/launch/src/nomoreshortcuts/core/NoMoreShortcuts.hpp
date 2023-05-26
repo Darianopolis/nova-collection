@@ -32,9 +32,6 @@ public:
     nova::ImFont* font = {};
     nova::ImFont* fontSmall = {};
 
-    nova::Image* emptyImage = {};
-    nova::ImTextureID emptyTexID;
-
     int mWidth, mHeight;
 
     std::vector<std::string> keywords;
@@ -64,7 +61,6 @@ public:
 
     void ResetItems(bool end = false);
 
-    void Update();
     void Draw();
 
     void ResetQuery();

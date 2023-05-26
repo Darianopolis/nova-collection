@@ -320,12 +320,12 @@ public:
 
             auto& p = nodes[i];
             if (debug-- > 0)
-                std::cout << std::format("str = {}, needle = {}\n", view.substr(p.strBegin, p.len), *iter);
+                NOVA_LOG("str = {}, needle = {}", view.substr(p.strBegin, p.len), *iter);
 
             if (view.substr(p.strBegin, p.len) == *iter)
             {
                 // Found first element in path
-                std::cout << std::format("Found first [{}] @ {}\n", *iter, FullPath(p));
+                NOVA_LOG("Found first [{}] @ {}", *iter, FullPath(p));
                 parent = i;
                 iter++;
                 if (iter == last)
@@ -347,12 +347,12 @@ public:
             auto& p = nodes[i];
 
             if (debug-- > 0)
-                std::cout << std::format("  substr = {}, needle = {}, sub = {}\n", view.substr(p.strBegin, p.len), *iter, parent == p.parent);
+                NOVA_LOG("  substr = {}, needle = {}, sub = {}", view.substr(p.strBegin, p.len), *iter, parent == p.parent);
 
             if (parent == p.parent && view.substr(p.strBegin, p.len) == *iter)
             {
                 //  Found next element in path
-                std::cout << std::format("Found [{}] @ {}\n", *iter, FullPath(p));
+                NOVA_LOG("Found [{}] @ {}", *iter, FullPath(p));
                 parent = i;
                 iter++;
                 if (iter == last)
@@ -367,7 +367,7 @@ public:
             i++;
         }
 
-        std::cout << "Found nothing!\n";
+        NOVA_LOG("Found nothing!");
 
         return std::nullopt;
     }
@@ -452,7 +452,7 @@ public:
 
         std::sort(results.begin(), results.end(), [](auto& l, auto& r) { return l.second >= r.second; });
         for (auto& p : results)
-            std::cout << "Len " << p.first << " -> " << p.second << '\n';
+            NOVA_LOG("Len {} -> {}", p.first, p.second);
     }
 
     struct TreeNode {
@@ -508,17 +508,17 @@ public:
             }
         }
 
-        std::cout << "Built tree in " << duration_cast<milliseconds>(steady_clock::now() - start) << '\n';
+        NOVA_LOG("Built tree in {}", duration_cast<milliseconds>(steady_clock::now() - start));
 
-        std::cout << "num roots = " << roots.size() << '\n';
-        std::cout << "count = " << sorted.size() << '\n';
+        NOVA_LOG("num roots = {}", roots.size());
+        NOVA_LOG("count = {}", sorted.size());
 
         size_t totalSize = 0;
         for (auto& root : roots)
             totalSize += root->size();
         totalSize += 8 * sorted.size();
 
-        std::cout << "Used bytes = " << totalSize << " (MB = " << (totalSize / (1024 * 1024)) << ")\n";
+        NOVA_LOG("Used bytes = {} (MB = {})", totalSize, totalSize / (1024 * 1024));
     }
 
     //////////////////////
@@ -590,17 +590,17 @@ public:
 
                 if ((preserved + dropped) % 10000 == 0)
                 {
-                    std::cout << "  checked: " << (preserved + dropped) << '\n';
+                    NOVA_LOG("  checked: {}", preserved + dropped);
                 }
             }
 
-            std::cout << "Preserved " << preserved << " nodes!\n";
-            std::cout << "Dropped" << dropped << " nodes!\n";
+            NOVA_LOG("Preserved {} nodes!", preserved);
+            NOVA_LOG("Dropped {} nodes!", dropped);
         }
 
         for (const std::filesystem::path& root : roots)
         {
-            std::cout << std::format("Loading root [{}]\n", root.string());
+            NOVA_LOG("Loading root [{}]", root.string());
             if (!std::filesystem::exists(root))
                 return PathTree(std::move(data), std::move(nodes));
 
@@ -666,7 +666,7 @@ public:
                     }
 
                     const std::string str = reinterpret_cast<const char*>(path.u8string().c_str());
-                    // Do all string covnersions early to ensure no encoding failures
+                    // Do all string conversions early to ensure no encoding failures
                     //   after data structures have been modified
 
                     const uint32_t parent = search->second;
@@ -688,21 +688,21 @@ public:
                     });
 
                     if (nodes.size() % 10'000 == 0) {
-                        std::cout << std::format("Files = {}\n", nodes.size());
+                        NOVA_LOG("Files = {}", nodes.size());
                     }
 
                     elements[str] = index;
                 }
                 catch ([[maybe_unused]] const std::exception& e)
                 {
-                    std::cerr << std::format("Error[{}] - Exception: {}\n", ++failed, e.what());
+                    NOVA_LOG("Error[{}] - Exception: {}", ++failed, e.what());
                 }
             }
         }
 
-        std::cout << "\nFiles = " << nodes.size() << '\n';
-        std::cout << "Data len = " << data.size() << '\n';
-        std::cout << "Index bytes = " << nodes.size() * sizeof(PathNode) << '\n';
+        NOVA_LOG("\nFiles = {}", nodes.size());
+        NOVA_LOG("Data len = {}", data.size());
+        NOVA_LOG("Index bytes = {}", nodes.size() * sizeof(PathNode));
 
         return PathTree(std::move(data), std::move(nodes));
     }

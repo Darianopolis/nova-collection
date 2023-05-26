@@ -13,31 +13,6 @@ static size_t nodesDestroyed = 0;
 
 struct Node;
 
-struct NodeIteratorRef
-{
-    Node* node;
-    size_t index;
-
-    bool operator==(const NodeIteratorRef& other) const noexcept
-    {
-        return node == other.node && index == other.index;
-    };
-};
-
-struct NodeIterator
-{
-
-    bool visit = false;
-    std::vector<NodeIteratorRef> nodes;
-
-    NodeIterator(Node* initial, size_t index);
-    NodeIterator(const NodeIterator&);
-    Node& operator*() const noexcept;
-    Node* operator->() const noexcept;
-    NodeIterator& operator++();
-    friend bool operator==(const NodeIterator &l, const NodeIterator& r);
-};
-
 // ---------------------------------------- //
 
 struct NodeView
@@ -66,21 +41,18 @@ struct NodeIndex
     std::string str;
 };
 
-// ---------------------------------------- //
+// -----------------------------------------------------------------------------
 
 struct Node
 {
     char* name = nullptr;
     Node* parent = nullptr;
-    Node** children = nullptr;
+    Node* firstChild = nullptr;
+    Node* nextSibling = nullptr;
     uint32_t index = 0;
-    uint32_t numChildren = 0;
-    // std::vector<std::unique_ptr<Node>> children;
     uint8_t len = 0;
     uint8_t depth;
-    // uint16_t match = 0;
 
-    // Node() {}
     Node(char* _name, uint8_t _len, Node* _parent, uint8_t _depth)
         : name(_name)
         , len(_len)
@@ -92,51 +64,32 @@ struct Node
 
     void AddChild(Node* child)
     {
-
-        if (!numChildren)
-        {
-            children = new Node*[2];
-        }
-        else if ((numChildren & (numChildren - 1)) == 0)
-        {
-            Node** new_children = new Node*[numChildren * 2];
-            memcpy(new_children, children, sizeof(Node*) * numChildren);
-            delete children;
-            children = new_children;
-        }
-
-        children[numChildren++] = child;
-
-        // children.emplace_back(child);
+        child->nextSibling = firstChild;
+        firstChild = child;
     }
 
     ~Node()
     {
         nodesDestroyed++;
         if (name)
-            free(name);
-
-        if (children)
         {
-            for (size_t i = 0; i < numChildren; ++i)
-                delete children[i];
+            delete[] name;
+        }
 
-            delete children;
+        auto node = firstChild;
+        while (node)
+        {
+            auto next = node->nextSibling;
+            delete node;
+            node = next;
         }
     }
 
     size_t Count()
     {
-        // size_t total = sizeof(Node);
-        // total += len;
-        // for (size_t i = 0; i < n_children; ++i) {
-        //   total += sizeof(Node*) + children[i]->count();
-        // }
         size_t total = 1;
-        for (size_t i = 0; i < numChildren; ++i)
-            total += children[i]->Count();
-        // for (auto& c : children)
-        //   total += c->count();
+        for (auto node = firstChild; node; node = node->nextSibling)
+            total += node->Count();
         return total;
     }
 
@@ -144,10 +97,13 @@ struct Node
     {
         os.write(reinterpret_cast<const char*>(&len), sizeof(uint8_t));
         os.write(name, len);
+        uint32_t numChildren = 0;
+        for (auto node = firstChild; node; node = node->nextSibling)
+            numChildren++;
         os.write(reinterpret_cast<const char*>(&numChildren), sizeof(uint32_t));
 
-        for (size_t i = 0; i < numChildren; ++i)
-            children[i]->save(os);
+        for (auto node = firstChild; node; node = node->nextSibling)
+            node->save(os);
     }
 
     void Save(const std::filesystem::path& path)
@@ -171,12 +127,6 @@ struct Node
         is.read(chars, len);
         chars[len] = '\0';
 
-        // size_t offset = vec.size();
-        // char* chars = (char*)offset;
-        // vec.resize(vec.size() + len + 1);
-        // is.read(&vec[offset], len);
-        // vec[offset + len] = '\0';
-
         uint32_t numChildren;
         is.read(reinterpret_cast<char*>(&numChildren), 4);
 
@@ -191,16 +141,6 @@ struct Node
     {
         std::ifstream is(path, std::ios::in | std::ios::binary);
         return is ? Load(is, nullptr, 0) : nullptr;
-    }
-
-    NodeIterator begin()
-    {
-        return NodeIterator(this, 0);
-    }
-
-    NodeIterator end()
-    {
-        return NodeIterator(this, numChildren);
     }
 
     std::string ToString()
@@ -220,8 +160,8 @@ struct Node
     void ForEach(const Fn& fn)
     {
         fn(*this);
-        for (size_t i = 0; i < numChildren; ++i)
-            children[i]->ForEach(fn);
+        for (auto node = firstChild; node; node = node->nextSibling)
+            node->ForEach(fn);
     }
 
     static std::weak_ordering CompareLenLex(const Node& l, const Node& r)

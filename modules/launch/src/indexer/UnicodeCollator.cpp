@@ -51,7 +51,7 @@ std::unique_ptr<UnicodeCollator> UnicodeCollator::NewAsciiCollator()
         }
     }
 
-    return std::unique_ptr<UnicodeCollator>(new UnicodeCollator(utf8Lookup, utf32Lookup));
+    return std::make_unique<UnicodeCollator>(std::move(utf8Lookup), std::move(utf32Lookup));
 }
 
 std::string UnicodeCollator::ConvertToPlainAscii(const std::string& value) const
