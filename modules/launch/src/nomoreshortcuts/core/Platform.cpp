@@ -11,10 +11,9 @@ namespace nms
 
     void ConvertToString(std::wstring_view input, std::string& output)
     {
-        BOOL usedDefault = FALSE;
-        int length = WideCharToMultiByte(CP_UTF8, MB_PRECOMPOSED, input.data(), int(input.size()), nullptr, 0, "?", &usedDefault);
+        int length = WideCharToMultiByte(CP_UTF8, 0, input.data(), int(input.size()), nullptr, 0, nullptr, nullptr);
         output.resize(length);
-        WideCharToMultiByte(CP_UTF8, MB_PRECOMPOSED, input.data(), int(input.size()), output.data(), length, "?", &usedDefault);
+        WideCharToMultiByte(CP_UTF8, 0, input.data(), int(input.size()), output.data(), length, nullptr, nullptr);
     }
 
 // -----------------------------------------------------------------------------

@@ -1,5 +1,7 @@
 #include "NoMoreShortcuts.hpp"
 
+#include "FileIndex.hpp"
+
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
 #include <Windows.h>
@@ -681,5 +683,26 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
 int main()
 {
     Main();
+
+    // nms::FileIndex index;
+    // // index.Index();
+    // // index.Save("index.dat");
+    // NOVA_LOG("-----------------------------------------");
+    // NOVA_TIMEIT_RESET();
+
+    // index.Load("index.dat");
+    // NOVA_TIMEIT("loaded-index");
+
+    // index.Flatten();
+    // NOVA_TIMEIT("flatten-index");
+
+    // index.Query({ "BeamNG" });
+    // NOVA_TIMEIT("query-index");
+
+    // auto first = index.First();
+    // NOVA_LOG("Result - {}", (void*)first->node);
+    // NOVA_TIMEIT("find-index");
+    // NOVA_LOG("Index loaded");
+
     return 0;
 }

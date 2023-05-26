@@ -12,10 +12,8 @@
 #include <format>
 #include <span>
 
-/**
- * @brief Represents a single file/folder within the file index
- * Size: 12 bytes (no padding)
- */
+// Represents a single file/folder within the file index
+// Size: 12 bytes (no padding)
 struct PathNode
 {
     uint32_t strBegin;
@@ -28,9 +26,7 @@ struct PathNode
 
 class PathTree;
 
-/**
- * @brief A wrapped view of a selected path. Generated from a PathNode
- */
+// Wrapped view of a selected path. Generated from a PathNode
 class PathView
 {
     friend PathTree;
@@ -40,23 +36,22 @@ class PathView
 
     PathView(std::filesystem::path _path, uint32_t _index)
         : path(_path)
-        , index(_index) {
-    }
-public:
+        , index(_index)
+    {}
 
-    const std::filesystem::path& GetPath() const {
+public:
+    const std::filesystem::path& GetPath() const
+    {
         return path;
     }
 };
 
-/**
- * @brief A complete file system index tree
- */
+// A complete file system index tree
 class PathTree
 {
     friend PathView;
-public:
 
+public:
     std::string data;
     std::string_view view;
     std::vector<PathNode> nodes;
@@ -70,12 +65,6 @@ public:
         , nodes(std::vector<PathNode>(0))
     {}
 
-    /**
-     * @brief Internal constructor
-     *
-     * @param data
-     * @param nodes
-     */
     PathTree(std::string _data, std::vector<PathNode> _nodes)
         : data(_data)
         , nodes(_nodes)

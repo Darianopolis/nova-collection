@@ -13,6 +13,6 @@ if Project "nms-v2" then
         "nova",
     }
 
-    Artifact { "out/NoMoreShortcuts", type = "Window" }
+    -- Artifact { "out/NoMoreShortcuts", type = "Window" }
     Artifact { "out/nms", type = "Console" }
 end
