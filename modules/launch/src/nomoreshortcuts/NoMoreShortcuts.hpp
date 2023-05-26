@@ -3,7 +3,6 @@
 #include <Platform.hpp>
 
 #include "Query.hpp"
-#include "Index.hpp"
 
 #include <UnicodeCollator.hpp>
 
@@ -32,12 +31,12 @@ public:
     nova::ImFont* font = {};
     nova::ImFont* fontSmall = {};
 
-    int mWidth, mHeight;
+    i32 mWidth, mHeight;
 
     std::vector<std::string> keywords;
 
     std::vector<std::unique_ptr<ResultItem>> items;
-    uint32_t selection;
+    u32 selection;
 
     std::unique_ptr<FileResultList> fileResultList;
     std::unique_ptr<FavResultList> favResultList;
@@ -54,7 +53,7 @@ public:
     bool show;
     bool running = true;
 
-    int updates = 0;
+    i32 updates = 0;
     std::chrono::time_point<std::chrono::steady_clock> last_update;
 
     App();
@@ -67,7 +66,7 @@ public:
     std::string JoinQuery();
     void UpdateQuery();
 
-    void Move(int delta);
+    void Move(i32 delta);
     bool MoveSelectedUp();
     bool MoveSelectedDown();
 
@@ -77,4 +76,4 @@ public:
     void Run();
 };
 
-int AppMain();
+i32 AppMain();

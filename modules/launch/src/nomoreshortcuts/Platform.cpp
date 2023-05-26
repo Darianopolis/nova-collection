@@ -4,16 +4,16 @@ namespace nms
 {
     void ConvertToWString(std::string_view input, std::wstring& output)
     {
-        int length = MultiByteToWideChar(CP_UTF8, MB_PRECOMPOSED, input.data(), int(input.size()), nullptr, 0);
+        i32 length = MultiByteToWideChar(CP_UTF8, MB_PRECOMPOSED, input.data(), i32(input.size()), nullptr, 0);
         output.resize(length);
-        MultiByteToWideChar(CP_UTF8, MB_PRECOMPOSED, input.data(), int(input.size()), output.data(), length);
+        MultiByteToWideChar(CP_UTF8, MB_PRECOMPOSED, input.data(), i32(input.size()), output.data(), length);
     }
 
     void ConvertToString(std::wstring_view input, std::string& output)
     {
-        int length = WideCharToMultiByte(CP_UTF8, 0, input.data(), int(input.size()), nullptr, 0, nullptr, nullptr);
+        i32 length = WideCharToMultiByte(CP_UTF8, 0, input.data(), i32(input.size()), nullptr, 0, nullptr, nullptr);
         output.resize(length);
-        WideCharToMultiByte(CP_UTF8, 0, input.data(), int(input.size()), output.data(), length, nullptr, nullptr);
+        WideCharToMultiByte(CP_UTF8, 0, input.data(), i32(input.size()), output.data(), length, nullptr, nullptr);
     }
 
 // -----------------------------------------------------------------------------

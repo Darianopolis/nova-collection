@@ -1,7 +1,5 @@
 #include "NoMoreShortcuts.hpp"
 
-#include "FileIndex.hpp"
-
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
 #include <Windows.h>
@@ -31,7 +29,7 @@ App::App()
     {
         GLFWimage iconImage;
 
-        int channels;
+        i32 channels;
         iconImage.pixels = stbi_load("favicon.png", &iconImage.width, &iconImage.height, &channels, STBI_rgb_alpha);
         NOVA_ON_SCOPE_EXIT(&) { stbi_image_free(iconImage.pixels); };
 
@@ -59,7 +57,7 @@ App::App()
 
 // -----------------------------------------------------------------------------
 
-    int count;
+    i32 count;
     auto mode = glfwGetVideoMode(glfwGetMonitors(&count)[0]);
     mWidth = mode->width;
     mHeight = mode->height;
@@ -108,7 +106,7 @@ void App::ResetItems(bool end)
             }
             std::reverse(items.begin(), items.end());
         }
-        selection = (uint32_t)items.size() - 1;
+        selection = (u32)items.size() - 1;
     }
     else
     {
@@ -158,7 +156,7 @@ void App::UpdateQuery()
     ResetItems();
 }
 
-void App::Move(int delta)
+void App::Move(i32 delta)
 {
     auto i = delta;
     if (i < 0)
@@ -473,12 +471,12 @@ void App::Run()
 
 void App::OnChar(u32 codepoint)
 {
-    auto c = static_cast<char>(codepoint);
+    auto c = static_cast<c8>(codepoint);
     auto& keyword = keywords[keywords.size() - 1];
     if (c == ' ')
     {
         if (keyword.size() == 0 || keywords.size() == 8) return;
-        [[maybe_unused]] auto set = static_cast<uint8_t>(1 << keywords.size());
+        [[maybe_unused]] auto set = static_cast<u8>(1 << keywords.size());
         // tree.setMatchBits(set, set, set, 0);
         // tree.matchBits |= set;
         keywords.push_back("");
@@ -487,7 +485,7 @@ void App::OnChar(u32 codepoint)
     {
         if (c < ' ' || c > '~')
             return;
-        // auto matchBit = static_cast<uint8_t>(1 << (keywords.size() - 1));
+        // auto matchBit = static_cast<u8>(1 << (keywords.size() - 1));
         keyword += c;
         // filter(matchBit, keyword, true);
         resultList->Query(QueryAction::SET, JoinQuery());
@@ -566,7 +564,7 @@ void App::OnKey(u32 key, i32 action, i32 mods)
         else
         {
             auto& keyword = keywords[keywords.size() - 1];
-            [[maybe_unused]] auto matchBit = static_cast<uint8_t>(1 << (keywords.size() - 1));
+            [[maybe_unused]] auto matchBit = static_cast<u8>(1 << (keywords.size() - 1));
             if (keyword.length() > 0)
             {
                 keyword.pop_back();
@@ -595,7 +593,7 @@ void App::OnKey(u32 key, i32 action, i32 mods)
             auto contentHandle = GlobalAlloc(GMEM_MOVEABLE, str.size() + 1);
             auto contents = GlobalLock(contentHandle);
             memcpy(contents, str.data(), str.size() + 1);
-            for (auto c = (char*)contents; *c; ++c)
+            for (auto c = (c8*)contents; *c; ++c)
                 *c = *c == '\\' ? '/' : *c;
             GlobalUnlock(contentHandle);
             SetClipboardData(CF_TEXT, contentHandle);
@@ -613,11 +611,11 @@ void App::OnKey(u32 key, i32 action, i32 mods)
                     AllocConsole();
                     freopen("CONOUT$", "w", stdout);
 
-                    std::vector<char> drives;
-                    wchar_t driveNames[1024];
+                    std::vector<c8> drives;
+                    c16 driveNames[1024];
                     GetLogicalDriveStringsW(1023, driveNames);
-                    for (wchar_t* drive = driveNames; *drive; drive += wcslen(drive) + 1)
-                        drives.push_back((char)drive[0]);
+                    for (c16* drive = driveNames; *drive; drive += wcslen(drive) + 1)
+                        drives.push_back((c8)drive[0]);
 
                     for (auto& d : drives)
                     {
@@ -674,13 +672,13 @@ void Main()
     }
 }
 
-int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
+i32 WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, i32)
 {
     Main();
     return 0;
 }
 
-int main()
+i32 main()
 {
     Main();
 

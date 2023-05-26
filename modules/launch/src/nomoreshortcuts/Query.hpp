@@ -1,12 +1,9 @@
 #pragma once
 
-#include "Index.hpp"
+#include <nova/core/nova_Core.hpp>
 
 #include <sqlite3.h>
-#include <PathTree.hpp>
 #include <FileIndexer.hpp>
-
-#include <nova/core/nova_Core.hpp>
 
 #include <string>
 #include <filesystem>
@@ -14,6 +11,8 @@
 #include <ranges>
 #include <regex>
 #include <execution>
+
+using namespace nova::types;
 
 enum class QueryAction
 {
@@ -73,7 +72,7 @@ public:
             }
         }
 
-        for (int i = 0; i < lists.size(); ++i)
+        for (i32 i = 0; i < lists.size(); ++i)
         {
             auto l = lists[i];
             if (l->Contains(*item))
@@ -104,7 +103,7 @@ public:
             }
         }
 
-        for (int i = 0; i < lists.size(); ++i)
+        for (i32 i = 0; i < lists.size(); ++i)
         {
             auto l = lists[i];
             if (l->Contains(*item))
@@ -144,14 +143,14 @@ public:
     }
 };
 
-static void CheckSql(int rc, sqlite3* db)
+static void CheckSql(i32 rc, sqlite3* db)
 {
     if (rc && (rc != SQLITE_DONE && rc != SQLITE_ROW))
         throw std::exception(std::format("SQL error: {}\n", sqlite3_errmsg(db)).c_str());
 }
 
-static char* sql_errno;
-static void CheckSql(int rc)
+static c8* sql_errno;
+static void CheckSql(i32 rc)
 {
     if (rc != SQLITE_OK && rc != SQLITE_DONE && rc != SQLITE_ROW)
     {
@@ -160,7 +159,7 @@ static void CheckSql(int rc)
     }
 }
 
-static int EmptyCallback(void*, int, char**, char**)
+static i32 EmptyCallback(void*, i32, c8**, c8**)
 {
     return 0;
 }
@@ -185,8 +184,8 @@ private:
     std::filesystem::path path;
 };
 
-// static const char* appDb = "C:\\Users\\Darian\\.nms\\app.db";
-// static char* appDb = boost::filesystem::user;
+// static const c8* appDb = "C:\\Users\\Darian\\.nms\\app.db";
+// static c8* appDb = boost::filesystem::user;
 
 class FavResultList : public ResultList
 {
@@ -231,7 +230,7 @@ public:
         CheckSql(sqlite3_exec(
                 db,
                 "SELECT path FROM favourites ORDER BY uses DESC",
-                [](void* list, int, char** val, char**) {
+                [](void* list, i32, c8** val, c8**) {
                     NOVA_LOG("path = {}", val[0]);
                     auto& fav = *static_cast<std::vector<std::unique_ptr<FavResultItem>>*>(list);
                     fav.push_back(std::make_unique<FavResultItem>(val[0]));
@@ -255,12 +254,12 @@ public:
         CheckSql(sqlite3_open(appDb.c_str(), &db), db);
 
         CheckSql(sqlite3_prepare_v2(db, "INSERT OR IGNORE INTO favourites(path, uses) VALUES (?, 0);", -1, &stmt, nullptr), db);
-        CheckSql(sqlite3_bind_text(stmt, 1, str.c_str(), (int)str.size(), SQLITE_TRANSIENT), db);
+        CheckSql(sqlite3_bind_text(stmt, 1, str.c_str(), (i32)str.size(), SQLITE_TRANSIENT), db);
         CheckSql(sqlite3_step(stmt), db);
         CheckSql(sqlite3_finalize(stmt), db);
 
         CheckSql(sqlite3_prepare_v2(db, "UPDATE favourites SET uses = uses + 1 WHERE path = ?", -1, &stmt, nullptr), db);
-        CheckSql(sqlite3_bind_text(stmt, 1, str.c_str(), (int)str.size(), SQLITE_TRANSIENT), db);
+        CheckSql(sqlite3_bind_text(stmt, 1, str.c_str(), (i32)str.size(), SQLITE_TRANSIENT), db);
         CheckSql(sqlite3_step(stmt), db);
 
         sqlite3_finalize(stmt);
@@ -284,7 +283,7 @@ public:
         CheckSql(sqlite3_open(appDb.c_str(), &db), db);
 
         CheckSql(sqlite3_prepare_v2(db, "DELETE FROM favourites WHERE path = ?", -1, &stmt, nullptr), db);
-        CheckSql(sqlite3_bind_text(stmt, 1, str.c_str(), (int)str.size(), SQLITE_TRANSIENT), db);
+        CheckSql(sqlite3_bind_text(stmt, 1, str.c_str(), (i32)str.size(), SQLITE_TRANSIENT), db);
         CheckSql(sqlite3_step(stmt), db);
 
         sqlite3_finalize(stmt);
@@ -382,10 +381,10 @@ class FileResultItem : public ResultItem
 {
     friend class FileResultList;
 
-    size_t index;
+    usz index;
     std::filesystem::path path;
 public:
-    FileResultItem(std::filesystem::path&& _path, size_t _index)
+    FileResultItem(std::filesystem::path&& _path, usz _index)
         : index(_index)
         , path(_path)
     {}
@@ -401,7 +400,7 @@ class FileResultList : public ResultList
     // std::vector<std::unique_ptr<Node>> roots;
     // std::vector<NodeView> flat;
     NodeIndex index;
-    uint8_t matchBits;
+    u8 matchBits;
     FavResultList* favourites;
     std::vector<std::string> keywords;
     std::unique_ptr<UnicodeCollator> collator;
@@ -423,12 +422,12 @@ public:
             NOVA_LOG("Loaded nodes in {}", duration_cast<milliseconds>(steady_clock::now() - start));
 
             start = steady_clock::now();
-            std::vector<NodeView> flat;
+            std::vector<Node*> flat;
             for (auto &root : roots)
                 root->ForEach([&](auto& n) { flat.emplace_back(&n); });
 
             std::sort(std::execution::par_unseq, flat.begin(), flat.end(), [](auto& l, auto& r) {
-                return Node::CompareDepthLenLex(*l.node, *r.node) == std::weak_ordering::less;
+                return Node::CompareDepthLenLex(*l, *r) == std::weak_ordering::less;
             });
             NOVA_LOG("Sorted nodes in {}", duration_cast<milliseconds>(steady_clock::now() - start));
 
@@ -444,13 +443,13 @@ public:
         mi_collect(true);
     }
 
-    void Filter(uint8_t matchBit, std::string_view keyword, bool lazy)
+    void Filter(u8 matchBit, std::string_view keyword, bool lazy)
     {
         NOVA_LOG("Refiltering on keyword, [{}] lazy = {}", keyword, lazy);
 
         auto needle = std::string{keyword};
-        std::transform(needle.begin(), needle.end(), needle.begin(), [](char c) {
-            return (char)std::tolower(c);
+        std::transform(needle.begin(), needle.end(), needle.begin(), [](c8 c) {
+            return (c8)std::tolower(c);
         });
 
         using namespace std::chrono;
@@ -489,7 +488,7 @@ public:
         NOVA_LOG("  total = {}", duration_cast<milliseconds>(end - start));
     }
 
-    std::string MakeString(uint32_t i)
+    std::string MakeString(u32 i)
     {
         auto &node = index.nodes[i];
         if (node.parent == i)
@@ -516,7 +515,7 @@ public:
 
         for (auto i = 0; i < new_keywords.size(); ++i)
         {
-            auto matchBit = static_cast<uint8_t>(1 << i);
+            auto matchBit = static_cast<u8>(1 << i);
             if (i >= keywords.size())
             {
                 // New keyword, update tree match bits
@@ -538,7 +537,7 @@ public:
         // Clear any remaining keywords!
         for (auto i = new_keywords.size(); i < keywords.size(); ++i)
         {
-            auto matchBit = static_cast<uint8_t>(1 << i);
+            auto matchBit = static_cast<u8>(1 << i);
             std::for_each(std::execution::par_unseq, index.nodes.begin(), index.nodes.end(), [&](NodeFlat& p) {
                 p.match &= ~matchBit;
                 p.inheritedMatch &= ~matchBit;
@@ -552,14 +551,14 @@ public:
     std::unique_ptr<ResultItem> Next(const ResultItem* item) override
     {
         auto* current = dynamic_cast<const FileResultItem*>(item);
-        size_t i = current ? current->index + 1 : 0;
+        usz i = current ? current->index + 1 : 0;
         while (i < index.nodes.size())
         {
             auto &node = index.nodes[i];
             if (((node.match | node.inheritedMatch) & matchBits) == matchBits)
             {
                 // auto path = std::filesystem::path(flat[i].node->string());
-                auto path = std::filesystem::path(MakeString((uint32_t)i));
+                auto path = std::filesystem::path(MakeString((u32)i));
                 if (!favourites->ContainsPath(path))
                     return std::make_unique<FileResultItem>(std::move(path), i);
             }
@@ -571,13 +570,13 @@ public:
     std::unique_ptr<ResultItem> Prev(const ResultItem* item) override
     {
         auto* current = dynamic_cast<const FileResultItem*>(item);
-        size_t i = current ? current->index - 1 : index.nodes.size() - 1;
+        usz i = current ? current->index - 1 : index.nodes.size() - 1;
         while (i != -1)
         {
             auto &node = index.nodes[i];
             if (((node.match | node.inheritedMatch) & matchBits) == matchBits)
             {
-                auto path = std::filesystem::path(MakeString((uint32_t)i));
+                auto path = std::filesystem::path(MakeString((u32)i));
                 if (!favourites->ContainsPath(path))
                     return std::make_unique<FileResultItem>(std::move(path), i);
             }
