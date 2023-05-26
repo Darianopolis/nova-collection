@@ -13,7 +13,6 @@ Near-instantaneous file searcher.
 - Tidy up codebase
   - Consolidate and simplify file indexer components
     - Merge favourites
-  - Wrap SQLite
 - Configuration
   - Customizable hotkeys
   - Resolution scaling

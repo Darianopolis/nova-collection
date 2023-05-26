@@ -2,15 +2,9 @@
 
 #include <nova/core/nova_Core.hpp>
 
-#include <sqlite3.h>
-#include <FileIndexer.hpp>
+#include "Database.hpp"
 
-#include <string>
-#include <filesystem>
-#include <memory>
-#include <ranges>
-#include <regex>
-#include <execution>
+#include <FileIndexer.hpp>
 
 using namespace nova::types;
 
@@ -41,13 +35,37 @@ public:
     virtual ~ResultList() = default;
 };
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 class ResultListPriorityCollector : public ResultList
 {
-public:
     std::vector<ResultList*> lists;
 
-    ResultListPriorityCollector()
-    {}
+public:
+    ResultListPriorityCollector() {}
 
     void AddList(ResultList* list)
     {
@@ -93,8 +111,8 @@ public:
 
     std::unique_ptr<ResultItem> Prev(const ResultItem* item)
     {
-        if (!item) {
-            // for (auto l : lists.reserve()) {
+        if (!item)
+        {
             for (auto l = lists.rbegin(); l != lists.rend(); l++)
             {
                 auto prev = (*l)->Prev(nullptr);
@@ -143,29 +161,35 @@ public:
     }
 };
 
-static void CheckSql(i32 rc, sqlite3* db)
-{
-    if (rc && (rc != SQLITE_DONE && rc != SQLITE_ROW))
-        throw std::exception(std::format("SQL error: {}\n", sqlite3_errmsg(db)).c_str());
-}
 
-static c8* sql_errno;
-static void CheckSql(i32 rc)
-{
-    if (rc != SQLITE_OK && rc != SQLITE_DONE && rc != SQLITE_ROW)
-    {
-        sqlite3_free(sql_errno);
-        throw std::exception(std::format("SQL error: {}\n", sql_errno).c_str());
-    }
-}
 
-static i32 EmptyCallback(void*, i32, c8**, c8**)
-{
-    return 0;
-}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 class FavResultItem : public ResultItem
 {
+    std::filesystem::path path;
+
 public:
     FavResultItem(const std::filesystem::path& _path)
         : path(_path)
@@ -180,90 +204,66 @@ public:
     {
         return GetPath() == other.GetPath();
     }
-private:
-    std::filesystem::path path;
 };
-
-// static const c8* appDb = "C:\\Users\\Darian\\.nms\\app.db";
-// static c8* appDb = boost::filesystem::user;
 
 class FavResultList : public ResultList
 {
     std::vector<std::string>* keywords;
     std::vector<std::unique_ptr<FavResultItem>> favourites;
-    std::string appDb;
+    std::string dbName;
 
 public:
     FavResultList(std::vector<std::string>* _keywords)
         : keywords(_keywords)
-        , appDb(getenv("USERPROFILE") + std::string("\\.nms\\app.db"))
+        , dbName(std::format("{}\\.nms\\app.db", getenv("USERPROFILE")))
     {
         Create();
         Load();
-        NOVA_LOG(" dir: {}", appDb);
+        NOVA_LOG("Database = {}", dbName);
     }
 
     void Create()
     {
-        sqlite3* db{nullptr};
-        NOVA_ON_SCOPE_EXIT(&) {
-            sqlite3_close(db);
-        };
-
-        CheckSql(sqlite3_open(appDb.c_str(), &db), db);
-
-        CheckSql(sqlite3_exec(db, "CREATE TABLE IF NOT EXISTS \"favourites\"("\
-                    "\"path\" TEXT PRIMARY KEY,"\
-                    "\"uses\" INTEGER NOT NULL)", EmptyCallback, nullptr, &sql_errno));
+        Database db(dbName);
+        Statement stmt(db, R"(
+            CREATE TABLE IF NOT EXISTS "favourites" (
+                "path" TEXT PRIMARY KEY,
+                "uses" INTEGER NOT NULL
+            );
+        )");
+        stmt.Step();
     }
 
     void Load()
     {
-        sqlite3* db{nullptr};
-        NOVA_ON_SCOPE_EXIT(&) {
-            sqlite3_close(db);
-        };
-
-        CheckSql(sqlite3_open(appDb.c_str(), &db), db);
+        Database db(dbName);
+        Statement stmt(db, "SELECT path FROM favourites ORDER BY uses DESC");
 
         favourites.clear();
-        CheckSql(sqlite3_exec(
-                db,
-                "SELECT path FROM favourites ORDER BY uses DESC",
-                [](void* list, i32, c8** val, c8**) {
-                    NOVA_LOG("path = {}", val[0]);
-                    auto& fav = *static_cast<std::vector<std::unique_ptr<FavResultItem>>*>(list);
-                    fav.push_back(std::make_unique<FavResultItem>(val[0]));
-                    return 0;
-                },
-                &favourites,
-                &sql_errno));
+        while (stmt.Step())
+        {
+            NOVA_LOG("path = {}", stmt.GetString(1));
+            favourites.push_back(std::make_unique<FavResultItem>(stmt.GetString(1)));
+        }
     }
 
     void IncrementUses(const std::filesystem::path& path, bool reload = true)
     {
-        sqlite3* db{nullptr};
-        sqlite3_stmt* stmt{nullptr};
-        NOVA_ON_SCOPE_FAILURE(&) {
-            sqlite3_finalize(stmt);
-            sqlite3_close(db);
-        };
-
         std::string str = path.string();
 
-        CheckSql(sqlite3_open(appDb.c_str(), &db), db);
+        Database db(dbName);
 
-        CheckSql(sqlite3_prepare_v2(db, "INSERT OR IGNORE INTO favourites(path, uses) VALUES (?, 0);", -1, &stmt, nullptr), db);
-        CheckSql(sqlite3_bind_text(stmt, 1, str.c_str(), (i32)str.size(), SQLITE_TRANSIENT), db);
-        CheckSql(sqlite3_step(stmt), db);
-        CheckSql(sqlite3_finalize(stmt), db);
+        {
+            Statement stmt(db, "INSERT OR IGNORE INTO favourites(path, uses) VALUES (?, 0)");
+            stmt.SetString(1, str);
+            stmt.Step();
+        }
 
-        CheckSql(sqlite3_prepare_v2(db, "UPDATE favourites SET uses = uses + 1 WHERE path = ?", -1, &stmt, nullptr), db);
-        CheckSql(sqlite3_bind_text(stmt, 1, str.c_str(), (i32)str.size(), SQLITE_TRANSIENT), db);
-        CheckSql(sqlite3_step(stmt), db);
-
-        sqlite3_finalize(stmt);
-        sqlite3_close(db);
+        {
+            Statement stmt(db, "UPDATE favourites SET uses = uses + 1 WHERE path = ?");
+            stmt.SetString(1, str);
+            stmt.Step();
+        }
 
         if (reload)
             Load();
@@ -271,23 +271,13 @@ public:
 
     void ResetUses(const std::filesystem::path& path, bool reload = true)
     {
-        sqlite3* db{nullptr};
-        sqlite3_stmt* stmt{nullptr};
-        NOVA_ON_SCOPE_FAILURE(&) {
-            sqlite3_finalize(stmt);
-            sqlite3_close(db);
-        };
-
         std::string str = path.string();
 
-        CheckSql(sqlite3_open(appDb.c_str(), &db), db);
+        Database db(dbName);
+        Statement stmt(db, "DELETE FROM favourites WHERE path = ?");
+        stmt.SetString(1, str);
+        stmt.Step();
 
-        CheckSql(sqlite3_prepare_v2(db, "DELETE FROM favourites WHERE path = ?", -1, &stmt, nullptr), db);
-        CheckSql(sqlite3_bind_text(stmt, 1, str.c_str(), (i32)str.size(), SQLITE_TRANSIENT), db);
-        CheckSql(sqlite3_step(stmt), db);
-
-        sqlite3_finalize(stmt);
-        sqlite3_close(db);
         if (reload)
             Load();
     }
@@ -345,6 +335,7 @@ public:
 
             if (i == favourites.rend())
                 return nullptr;
+
             i++;
         }
 
@@ -369,13 +360,37 @@ public:
 
     bool ContainsPath(const std::filesystem::path& path)
     {
-        return std::ranges::find_if(favourites, [&](auto& item) {
-            return item->GetPath() == path;
-        }) != favourites.end();
+        return std::ranges::find_if(favourites,
+            [&](auto& item) {
+                return item->GetPath() == path;
+            }) != favourites.end();
     }
 };
 
-// -------------------- FILE RESULT ITEM -------------------- //
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 class FileResultItem : public ResultItem
 {
@@ -383,6 +398,7 @@ class FileResultItem : public ResultItem
 
     usz index;
     std::filesystem::path path;
+
 public:
     FileResultItem(std::filesystem::path&& _path, usz _index)
         : index(_index)
@@ -397,31 +413,27 @@ public:
 
 class FileResultList : public ResultList
 {
-    // std::vector<std::unique_ptr<Node>> roots;
-    // std::vector<NodeView> flat;
     NodeIndex index;
     u8 matchBits;
     FavResultList* favourites;
     std::vector<std::string> keywords;
     std::unique_ptr<UnicodeCollator> collator;
+
 public:
     FileResultList(FavResultList* _favourites)
         : favourites(_favourites)
         , matchBits(0)
         , collator(UnicodeCollator::NewAsciiCollator())
     {
-        using namespace std::chrono;
-
-        auto start = steady_clock::now();
+        NOVA_TIMEIT_RESET();
         {
             std::vector<std::unique_ptr<Node>> roots;
             auto* c = Node::Load(getenv("USERPROFILE") + std::string("\\.nms\\C.index"));
             auto* d = Node::Load(getenv("USERPROFILE") + std::string("\\.nms\\D.index"));
             if (c) roots.emplace_back(c);
             if (d) roots.emplace_back(d);
-            NOVA_LOG("Loaded nodes in {}", duration_cast<milliseconds>(steady_clock::now() - start));
+            NOVA_TIMEIT("loaded-nodes");
 
-            start = steady_clock::now();
             std::vector<Node*> flat;
             for (auto &root : roots)
                 root->ForEach([&](auto& n) { flat.emplace_back(&n); });
@@ -429,18 +441,14 @@ public:
             std::sort(std::execution::par_unseq, flat.begin(), flat.end(), [](auto& l, auto& r) {
                 return Node::CompareDepthLenLex(*l, *r) == std::weak_ordering::less;
             });
-            NOVA_LOG("Sorted nodes in {}", duration_cast<milliseconds>(steady_clock::now() - start));
+            NOVA_TIMEIT("sorted-nodes");
 
-            start = steady_clock::now();
             index = Flatten(flat);
-            NOVA_LOG("Flattened nodes in {}", duration_cast<milliseconds>(steady_clock::now() - start));
-
-            start = steady_clock::now();
+            NOVA_TIMEIT("flatten-nodes");
         }
-        NOVA_LOG("Destroyed temporary nodes in {}", duration_cast<milliseconds>(steady_clock::now() - start));
-        NOVA_LOG("Nodes created   = {}", nodesCreated);
-        NOVA_LOG("Nodes destroyed = {}", nodesDestroyed);
+
         mi_collect(true);
+        NOVA_TIMEIT("node-cleanup");
     }
 
     void Filter(u8 matchBit, std::string_view keyword, bool lazy)
@@ -452,8 +460,7 @@ public:
             return (c8)std::tolower(c);
         });
 
-        using namespace std::chrono;
-        auto start = steady_clock::now();
+        NOVA_TIMEIT_RESET();
         if (lazy)
         {
             std::for_each(std::execution::par_unseq, index.nodes.begin(), index.nodes.end(), [&](auto& view) {
@@ -474,18 +481,16 @@ public:
                     : view.match & ~matchBit;
             });
         }
-        NOVA_LOG("  indexed in {}", duration_cast<milliseconds>(steady_clock::now() - start));
+        NOVA_TIMEIT("filter-find");
 
-        auto start2 = steady_clock::now();
         for (auto& n : index.nodes)
         {
             auto& parent = index.nodes[n.parent];
             n.inheritedMatch = (parent.strOffset != n.strOffset)
                 ? parent.inheritedMatch | n.match : n.match;
         }
-        auto end = steady_clock::now();
-        NOVA_LOG("  propogated in {}", duration_cast<milliseconds>(end - start2));
-        NOVA_LOG("  total = {}", duration_cast<milliseconds>(end - start));
+
+        NOVA_TIMEIT("filter-propogated");
     }
 
     std::string MakeString(u32 i)
@@ -557,7 +562,6 @@ public:
             auto &node = index.nodes[i];
             if (((node.match | node.inheritedMatch) & matchBits) == matchBits)
             {
-                // auto path = std::filesystem::path(flat[i].node->string());
                 auto path = std::filesystem::path(MakeString((u32)i));
                 if (!favourites->ContainsPath(path))
                     return std::make_unique<FileResultItem>(std::move(path), i);

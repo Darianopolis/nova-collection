@@ -68,9 +68,6 @@ App::App()
     fontSmall = imDraw->LoadFont("SEGOEUI.TTF", 18.f, commandPool, tracker, fence, queue);
 
 // -----------------------------------------------------------------------------
-// -----------------------------------------------------------------------------
-// -----------------------------------------------------------------------------
-// -----------------------------------------------------------------------------
 
     keywords.push_back("");
 
@@ -504,22 +501,6 @@ void App::OnKey(u32 key, i32 action, i32 mods)
         if (mods & GLFW_MOD_SHIFT)
             running = false;
         show = false;
-    // break;case MouseLButton:
-    //     if (overlay::Mouseover(e, queryBox) || overlay::Mouseover(e, resultsBox))
-    //     {
-    //         Update();
-    //         overlay::Focus(*mainLayer);
-    //     }
-
-    //     if (menu.visible && overlay::Mouseover(e, menu))
-    //     {
-    //         overlay::Quit(*stage, 0);
-    //     }
-    //     else
-    //     {
-    //         menu.visible = false;
-    //         overlay::Hide(*menuLayer);
-    //     }
     break;case GLFW_KEY_DOWN:
         Move(1);
     break;case GLFW_KEY_UP:
@@ -538,9 +519,6 @@ void App::OnKey(u32 key, i32 action, i32 mods)
             favResultList->IncrementUses(view->GetPath());
             ResetQuery();
             show = false;
-            // overlay::Hide(*mainLayer);
-
-            // system(("explorer \""+ str +"\"").c_str());
 
             if ((GetKeyState(VK_LSHIFT) & 0x8000)
                 && (GetKeyState(VK_LCONTROL) & 0x8000)) {
@@ -681,26 +659,5 @@ i32 WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, i32)
 i32 main()
 {
     Main();
-
-    // nms::FileIndex index;
-    // // index.Index();
-    // // index.Save("index.dat");
-    // NOVA_LOG("-----------------------------------------");
-    // NOVA_TIMEIT_RESET();
-
-    // index.Load("index.dat");
-    // NOVA_TIMEIT("loaded-index");
-
-    // index.Flatten();
-    // NOVA_TIMEIT("flatten-index");
-
-    // index.Query({ "BeamNG" });
-    // NOVA_TIMEIT("query-index");
-
-    // auto first = index.First();
-    // NOVA_LOG("Result - {}", (void*)first->node);
-    // NOVA_TIMEIT("find-index");
-    // NOVA_LOG("Index loaded");
-
     return 0;
 }

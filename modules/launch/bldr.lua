@@ -1,8 +1,9 @@
-if Project "nms-v2" then
+if Project "nms" then
     Compile "src/**"
     Include {
         "src/indexer",
         "src/nomoreshortcuts",
+        "src/database",
     }
     Import {
         "sqlite3",

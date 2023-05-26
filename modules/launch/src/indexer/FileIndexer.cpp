@@ -39,6 +39,7 @@ Node::~Node()
 
 void Node::AddChild(Node* child)
 {
+    child->parent = this;
     child->nextSibling = firstChild;
     firstChild = child;
 }
