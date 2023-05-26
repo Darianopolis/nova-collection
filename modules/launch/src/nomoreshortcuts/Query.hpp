@@ -1,8 +1,8 @@
 #pragma once
 
-#include <nova/core/nova_Core.hpp>
-
 #include "Database.hpp"
+
+#include <nova/core/nova_Core.hpp>
 
 #include <FileIndexer.hpp>
 

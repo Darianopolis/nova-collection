@@ -12,10 +12,8 @@
 #include <shellapi.h>
 #include <wincodec.h>
 #include <CommCtrl.h>
-
-#include <array>
-#include <iostream>
-#include <string>
+#include <shellapi.h>
+#include <combaseapi.h>
 
 using namespace nova::types;
 

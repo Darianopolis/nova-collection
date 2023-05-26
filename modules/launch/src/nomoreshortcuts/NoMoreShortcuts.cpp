@@ -1,13 +1,5 @@
 #include "NoMoreShortcuts.hpp"
 
-#define WIN32_LEAN_AND_MEAN
-#define NOMINMAX
-#include <Windows.h>
-#include <shellapi.h>
-#include <combaseapi.h>
-
-#include <thread>
-
 using namespace std::literals;
 
 App::App()

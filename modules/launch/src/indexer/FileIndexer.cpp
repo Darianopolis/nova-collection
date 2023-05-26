@@ -2,12 +2,7 @@
 
 #include <nova/core/nova_Core.hpp>
 
-#define WIN32_LEAN_AND_MEAN
-#define NOMINMAX
-#include <Windows.h>
-
-#include <unordered_map>
-#include <ranges>
+#include <Platform.hpp>
 
 // -----------------------------------------------------------------------------
 
@@ -212,7 +207,7 @@ struct WinIndexer
     static void Index(Node* node, const c16* root)
     {
         WinIndexer s(root);
-        std::wcout << L"Indexing " << root << L'\n';
+        NOVA_LOG("Indexing {}", nms::ConvertToString(root));
         s.Search(node, wcslen(root), 0);
     }
 
@@ -221,8 +216,6 @@ struct WinIndexer
         path[offset] = '\\';
         path[offset + 1] = '*';
         path[offset + 2] = '\0';
-
-        // std::wcout << L"in = " << path << L"\n";
 
         HANDLE findHandle = FindFirstFileEx(
             path,
@@ -233,14 +226,12 @@ struct WinIndexer
             FIND_FIRST_EX_LARGE_FETCH);
 
         if (findHandle == INVALID_HANDLE_VALUE)
-        {
-            // NOVA_LOG("Invalid handle!");
             return;
-        }
 
         do
         {
             usz len = wcslen(result.cFileName);
+
             // Ignore current (.) and parent (..) directories!
             if (len == 0 || (result.cFileName[0] == '.' && (len == 1 || (len == 2 && result.cFileName[1] == '.'))))
                 continue;
@@ -258,7 +249,7 @@ struct WinIndexer
 
             if (utf8Len == 0)
             {
-                std::wcout << "Failed to convert " << result.cFileName << L"!\n";
+                NOVA_LOG("Failed to convert {}", nms::ConvertToString(result.cFileName));
                 continue;
             }
 
@@ -270,14 +261,13 @@ struct WinIndexer
 
             if (++count % 10000 == 0)
             {
-                std::wcout << L"files = " << count << L", path = " << path << L"\n";
+                NOVA_LOG("Files = {}, path = {}", count, nms::ConvertToString(path));
             }
 
             if (result.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
             {
                 memcpy(&path[offset + 1], result.cFileName, 2 * len);
                 Search(child, offset + len + 1, depth == 255 ? 255 : depth + 1);
-                // _search(nullptr, offset + len + 1, depth == 255 ? 255 : depth + 1);
             }
         }
         while (FindNextFile(findHandle, &result));
@@ -294,7 +284,7 @@ Node* IndexDrive(c8 driverLetter)
     NOVA_LOG("Drive letter = {}", upper);
 
     auto* node = new Node(new c8[] { upper, ':', '\\', '\0' }, 3, nullptr, 0);
-    c16 init[] { L'\\', L'\\', L'?', L'\\', static_cast<c16>(upper), L':', };
+    c16 init[] { L'\\', L'\\', L'?', L'\\', c16(upper), L':', };
     WinIndexer::Index(node, init);
 
     NOVA_LOG("Indexed!");

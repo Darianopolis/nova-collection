@@ -1,16 +1,9 @@
 #pragma once
 
-#include <Platform.hpp>
-
 #include "Query.hpp"
 
+#include <Platform.hpp>
 #include <UnicodeCollator.hpp>
-
-#include <filesystem>
-#include <vector>
-#include <iostream>
-#include <chrono>
-#include <format>
 
 using namespace nova::types;
 

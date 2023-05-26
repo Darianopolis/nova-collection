@@ -54,31 +54,7 @@ std::unique_ptr<UnicodeCollator> UnicodeCollator::NewAsciiCollator()
     return std::make_unique<UnicodeCollator>(std::move(utf8Lookup), std::move(utf32Lookup));
 }
 
-std::string UnicodeCollator::ConvertToPlainAscii(const std::string& value) const
-{
-    std::string out;
-    usz len = value.length();
-    usz i = 0;
-    while (i < len)
-    {
-        uc8 c = (uc8)value[i];
-        if (c > 127)
-        {
-            out.push_back('?');
-            if (c < 224) i += 2;
-            else if (c < 240) i += 3;
-            else i += 4;
-        }
-        else
-        {
-            out.push_back(c);
-            ++i;
-        }
-    }
-    return out;
-}
-
-bool UnicodeCollator::Compare(const std::string_view& value, usz& index, const c8 c) const
+bool UnicodeCollator::Compare(std::string_view value, usz& index, const c8 c) const
 {
     const uc8 first = value[index];
     c8 n = utf8Lookup[first];
@@ -100,7 +76,7 @@ bool UnicodeCollator::Compare(const std::string_view& value, usz& index, const c
     return n == c;
 }
 
-bool UnicodeCollator::FuzzyFind(const std::string_view& value, const std::string& str) const
+bool UnicodeCollator::FuzzyFind(std::string_view value, std::string_view str) const
 {
     const usz valueCount = value.length();
     const usz strCount = str.length();
@@ -135,4 +111,28 @@ bool UnicodeCollator::FuzzyFind(const std::string_view& value, const std::string
     }
 
     return false;
+}
+
+std::string UnicodeCollator::ConvertToPlainAscii(std::string_view value) const
+{
+    std::string out;
+    usz len = value.length();
+    usz i = 0;
+    while (i < len)
+    {
+        uc8 c = (uc8)value[i];
+        if (c > 127)
+        {
+            out.push_back('?');
+            if (c < 224) i += 2;
+            else if (c < 240) i += 3;
+            else i += 4;
+        }
+        else
+        {
+            out.push_back(c);
+            ++i;
+        }
+    }
+    return out;
 }
