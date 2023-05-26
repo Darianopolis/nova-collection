@@ -225,13 +225,14 @@ public:
     void Create()
     {
         Database db(dbName);
-        Statement stmt(db, R"(
-            CREATE TABLE IF NOT EXISTS "favourites" (
-                "path" TEXT PRIMARY KEY,
-                "uses" INTEGER NOT NULL
-            );
-        )");
-        stmt.Step();
+        Statement(db,
+            R"(
+                CREATE TABLE IF NOT EXISTS "favourites" (
+                    "path" TEXT PRIMARY KEY,
+                    "uses" INTEGER NOT NULL
+                );
+            )")
+            .Step();
     }
 
     void Load()
@@ -253,17 +254,13 @@ public:
 
         Database db(dbName);
 
-        {
-            Statement stmt(db, "INSERT OR IGNORE INTO favourites(path, uses) VALUES (?, 0)");
-            stmt.SetString(1, str);
-            stmt.Step();
-        }
+        Statement(db, "INSERT OR IGNORE INTO favourites(path, uses) VALUES (?, 0)")
+            .SetString(1, str)
+            .Step();
 
-        {
-            Statement stmt(db, "UPDATE favourites SET uses = uses + 1 WHERE path = ?");
-            stmt.SetString(1, str);
-            stmt.Step();
-        }
+        Statement(db, "UPDATE favourites SET uses = uses + 1 WHERE path = ?")
+            .SetString(1, str)
+            .Step();
 
         if (reload)
             Load();
@@ -274,9 +271,9 @@ public:
         std::string str = path.string();
 
         Database db(dbName);
-        Statement stmt(db, "DELETE FROM favourites WHERE path = ?");
-        stmt.SetString(1, str);
-        stmt.Step();
+        Statement(db, "DELETE FROM favourites WHERE path = ?")
+            .SetString(1, str)
+            .Step();
 
         if (reload)
             Load();

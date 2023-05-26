@@ -1,9 +1,9 @@
 #include "Database.hpp"
 
-Database::Database(std::string path)
+Database::Database(const std::string& path)
 {
     if (auto err = sqlite3_open(path.c_str(), &db))
-        throw std::runtime_error(std::format("Error[{}] opening sqlite3 db file [{}]", err, path));
+        NOVA_THROW("Error[{}] opening sqlite3 db file [{}]", err, path);
 }
 
 Database::~Database()
@@ -19,12 +19,12 @@ sqlite3* Database::GetDB()
 
 // -----------------------------------------------------------------------------
 
-Statement::Statement(Database &_db, std::string sql)
+Statement::Statement(Database& _db, const std::string& sql)
     : db(_db.GetDB())
 {
     const c8* tail;
     if (auto err = sqlite3_prepare_v2(db, sql.c_str(), i32(sql.length()) + 1, &stmt, &tail))
-        throw std::runtime_error(std::format("Error[{}] during prepare: {}", err, sqlite3_errmsg(db)));
+        NOVA_THROW("Error[{}] during prepare: {}", err, sqlite3_errmsg(db));
 }
 
 Statement::~Statement()
@@ -35,10 +35,11 @@ Statement::~Statement()
 
 void Statement::ResetIfComplete()
 {
-    if (!complete) return;
+    if (!complete)
+        return;
 
     if (auto err = sqlite3_reset(stmt))
-        throw std::runtime_error(std::format("Error[{}] resetting stmt: {}", err, sqlite3_errmsg(db)));
+        NOVA_THROW("Error[{}] resetting stmt: {}", err, sqlite3_errmsg(db));
 
     complete = false;
 }
@@ -54,7 +55,7 @@ bool Statement::Step()
     if (res == SQLITE_ROW)
         return true;
 
-    throw std::runtime_error(std::format("Error[{}] during step: {}", res, sqlite3_errmsg(db)));
+    NOVA_THROW("Error[{}] during step: {}", res, sqlite3_errmsg(db));
 }
 
 i64 Statement::Insert()
@@ -63,32 +64,40 @@ i64 Statement::Insert()
     return sqlite3_last_insert_rowid(db);
 }
 
-void Statement::SetNull(u32 index)
+Statement& Statement::SetNull(u32 index)
 {
     ResetIfComplete();
     if (auto err = sqlite3_bind_null(stmt, index))
-        throw std::runtime_error(std::format("Error[{}] during set: {}", err, sqlite3_errmsg(db)));
+        NOVA_THROW("Error[{}] during set: {}", err, sqlite3_errmsg(db));
+
+    return *this;
 }
 
-void Statement::SetString(u32 index, std::string_view str)
+Statement& Statement::SetString(u32 index, std::string_view str)
 {
     ResetIfComplete();
     if (auto err = sqlite3_bind_text(stmt, index, &str[0], i32(str.cend() - str.cbegin()), SQLITE_STATIC))
-        throw std::runtime_error(std::format("Error[{}] during set: {}", err, sqlite3_errmsg(db)));
+        NOVA_THROW("Error[{}] during set: {}", err, sqlite3_errmsg(db));
+
+    return *this;
 }
 
-void Statement::SetInt(u32 index, i64 value)
+Statement& Statement::SetInt(u32 index, i64 value)
 {
     ResetIfComplete();
     if (auto err = sqlite3_bind_int64(stmt, index, value))
-        throw std::runtime_error(std::format("Error[{}] during set: {}", err, sqlite3_errmsg(db)));
+        NOVA_THROW("Error[{}] during set: {}", err, sqlite3_errmsg(db));
+
+    return *this;
 }
 
-void Statement::SetReal(u32 index, f64 value)
+Statement& Statement::SetReal(u32 index, f64 value)
 {
     ResetIfComplete();
     if (auto err = sqlite3_bind_double(stmt, index, value))
-        throw std::runtime_error(std::format("Error[{}] during set: {}", err, sqlite3_errmsg(db)));
+        NOVA_THROW("Error[{}] during set: {}", err, sqlite3_errmsg(db));
+
+    return *this;
 }
 
 std::string_view Statement::GetString(u32 index)
