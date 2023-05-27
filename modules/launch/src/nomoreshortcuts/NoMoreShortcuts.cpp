@@ -34,8 +34,8 @@ App::App()
 
     surface = context->CreateSurface(hwnd);
     swapchain = context->CreateSwapchain(surface,
-        nova::ImageUsage::TransferDst
-        | nova::ImageUsage::ColorAttach,
+        nova::TextureUsage::TransferDst
+        | nova::TextureUsage::ColorAttach,
         nova::PresentMode::Fifo);
 
     queue = context->graphics;
@@ -320,19 +320,19 @@ void App::Draw()
         if (iter == iconCache.end())
         {
             icon = &iconCache[path];
-            icon->image = nms::LoadIconFromPath(
+            icon->texture = nms::LoadIconFromPath(
                 context, commandPool, tracker, queue, fence,
                 path.string());
 
-            if (icon->image)
-                icon->texID = imDraw->RegisterTexture(icon->image, imDraw->defaultSampler);
+            if (icon->texture)
+                icon->texID = imDraw->RegisterTexture(icon->texture, imDraw->defaultSampler);
         }
         else
         {
             icon = &iter->second;
         }
 
-        if (icon->image)
+        if (icon->texture)
         {
             imDraw->DrawRect({
                 .centerPos = pos
@@ -436,12 +436,12 @@ void App::Run()
 
             queue->Acquire({swapchain}, {fence});
 
-            cmd->BeginRendering({swapchain->image}, {}, {}, true);
+            cmd->BeginRendering({swapchain->texture}, {}, {}, true);
             cmd->ClearColor(0, Vec4(0.f, 1/255.f, 0.f, 0.f), imDraw->bounds.Size());
             cmd->ExecuteCommands({cmd2});
             cmd->EndRendering();
 
-            cmd->Transition(swapchain->image, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, VK_PIPELINE_STAGE_2_NONE, 0);
+            cmd->Transition(swapchain->texture, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, VK_PIPELINE_STAGE_2_NONE, 0);
 
             queue->Submit({cmd}, {fence}, {fence});
             queue->Present({swapchain}, {fence});

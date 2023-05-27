@@ -38,7 +38,7 @@ namespace nms
         return str;
     }
 
-    nova::Image* LoadIconFromPath(
+    nova::Texture* LoadIconFromPath(
         nova::Context* context,
         nova::CommandPool* cmdPool,
         nova::ResourceTracker* tracker,

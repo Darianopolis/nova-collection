@@ -37,7 +37,7 @@ public:
 
     struct IconResult
     {
-        nova::Image* image = {};
+        nova::Texture* texture = {};
         nova::ImTextureID texID;
     };
 
