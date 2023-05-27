@@ -436,7 +436,8 @@ void App::Run()
 
             queue->Acquire({swapchain}, {fence});
 
-            cmd->BeginRendering({swapchain->image}, {Vec4(0.f, 1.f / 255.f, 0.f, 0.f)}, true);
+            cmd->BeginRendering({swapchain->image}, {}, {}, true);
+            cmd->ClearColor(0, Vec4(0.f, 1/255.f, 0.f, 0.f), imDraw->bounds.Size());
             cmd->ExecuteCommands({cmd2});
             cmd->EndRendering();
 

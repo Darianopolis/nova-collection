@@ -1,8 +1,7 @@
 #pragma once
 
-#include "Database.hpp"
-
 #include <nova/core/nova_Core.hpp>
+#include <nova/sqlite/nova_Sqlite.hpp>
 
 #include <FileIndexer.hpp>
 
@@ -224,8 +223,8 @@ public:
 
     void Create()
     {
-        Database db(dbName);
-        Statement(db,
+        nova::Database db(dbName);
+        nova::Statement(db,
             R"(
                 CREATE TABLE IF NOT EXISTS "favourites" (
                     "path" TEXT PRIMARY KEY,
@@ -237,28 +236,25 @@ public:
 
     void Load()
     {
-        Database db(dbName);
-        Statement stmt(db, "SELECT path FROM favourites ORDER BY uses DESC");
+        nova::Database db(dbName);
+        nova::Statement stmt(db, "SELECT path FROM favourites ORDER BY uses DESC");
 
         favourites.clear();
         while (stmt.Step())
-        {
-            NOVA_LOG("path = {}", stmt.GetString(1));
             favourites.push_back(std::make_unique<FavResultItem>(stmt.GetString(1)));
-        }
     }
 
     void IncrementUses(const std::filesystem::path& path, bool reload = true)
     {
         std::string str = path.string();
 
-        Database db(dbName);
+        nova::Database db(dbName);
 
-        Statement(db, "INSERT OR IGNORE INTO favourites(path, uses) VALUES (?, 0)")
+        nova::Statement(db, "INSERT OR IGNORE INTO favourites(path, uses) VALUES (?, 0)")
             .SetString(1, str)
             .Step();
 
-        Statement(db, "UPDATE favourites SET uses = uses + 1 WHERE path = ?")
+        nova::Statement(db, "UPDATE favourites SET uses = uses + 1 WHERE path = ?")
             .SetString(1, str)
             .Step();
 
@@ -270,8 +266,8 @@ public:
     {
         std::string str = path.string();
 
-        Database db(dbName);
-        Statement(db, "DELETE FROM favourites WHERE path = ?")
+        nova::Database db(dbName);
+        nova::Statement(db, "DELETE FROM favourites WHERE path = ?")
             .SetString(1, str)
             .Step();
 
