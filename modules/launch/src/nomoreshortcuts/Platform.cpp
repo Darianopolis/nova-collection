@@ -22,7 +22,7 @@ namespace nms
     {
         IWICImagingFactory* wic;
 
-        ankerl::unordered_dense::map<u64, nova::Texture*> imageCache;
+        ankerl::unordered_dense::map<u64, Ptr<nova::Texture>> imageCache;
 
         ComState()
         {
@@ -43,7 +43,12 @@ namespace nms
         }
     };
 
-    static thread_local ComState NmsComState = {};
+    static ComState NmsComState = {};
+
+    void ClearIconCache()
+    {
+        NmsComState.imageCache.clear();
+    }
 
     nova::Texture* LoadIconFromPath(
         nova::Context* context,
@@ -111,31 +116,26 @@ namespace nms
         u64 hash = ankerl::unordered_dense::detail::wyhash::hash(pixelData, dataSize);
         auto& texture = NmsComState.imageCache[hash];
         if (texture)
-            return texture;
+            return texture.get();
 
         NOVA_LOG("Loading icon {}, size = ({}, {})", path, width, height);
         NOVA_LOG("  Num images = {}", NmsComState.imageCache.size());
 
-        texture = context->CreateTexture(Vec3U(width, height, 0),
+        texture = std::make_unique<nova::Texture>(context, Vec3U(width, height, 0),
             nova::TextureUsage::Sampled,
             nova::Format::RGBA8U);
-        NOVA_ON_SCOPE_FAILURE(&) {
-            context->DestroyTexture(texture);
-            texture = nullptr;
-        };
 
-        auto staging = context->CreateBuffer(dataSize,
+        auto staging = nova::Buffer(context, dataSize,
             nova::BufferUsage::TransferSrc,
             nova::BufferFlags::CreateMapped);
-        NOVA_ON_SCOPE_EXIT(&) { context->DestroyBuffer(staging); };
 
-        std::memcpy(staging->mapped, pixelData, dataSize);
+        std::memcpy(staging.mapped, pixelData, dataSize);
 
         auto cmd = cmdPool->BeginPrimary(tracker);
-        cmd->CopyToTexture(texture, staging);
+        cmd->CopyToTexture(texture.get(), &staging);
         queue->Submit({cmd}, {}, {fence});
         fence->Wait();
 
-        return texture;
+        return texture.get();
     }
 }

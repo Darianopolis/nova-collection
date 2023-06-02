@@ -3,6 +3,11 @@
 using namespace std::literals;
 
 App::App()
+    : context({
+        .debug = true,
+    })
+    , queue(context.graphics)
+    , imDraw(&context)
 {
     glfwInit();
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
@@ -28,24 +33,15 @@ App::App()
         glfwSetWindowIcon(window, 1, &iconImage);
     }
 
-    context = nova::Context::Create({
-        .debug = false,
-    });
-
-    surface = context->CreateSurface(hwnd);
-    swapchain = context->CreateSwapchain(surface,
+    surface = nova::Surface(&context, hwnd);
+    swapchain = nova::Swapchain(&context, &surface,
         nova::TextureUsage::TransferDst
         | nova::TextureUsage::ColorAttach,
         nova::PresentMode::Fifo);
 
-    queue = context->graphics;
-    commandPool = context->CreateCommandPool();
-    fence = context->CreateFence();
-    tracker = context->CreateResourceTracker();
-
-// -----------------------------------------------------------------------------
-
-    imDraw = nova::ImDraw2D::Create(context);
+    commandPool = nova::CommandPool(&context, &queue);
+    fence = nova::Fence(&context);
+    tracker = nova::ResourceTracker(&context);
 
 // -----------------------------------------------------------------------------
 
@@ -56,8 +52,8 @@ App::App()
 
 // -----------------------------------------------------------------------------
 
-    font = imDraw->LoadFont("SEGUISB.TTF", 35.f, commandPool, tracker, fence, queue);
-    fontSmall = imDraw->LoadFont("SEGOEUI.TTF", 18.f, commandPool, tracker, fence, queue);
+    font = imDraw.LoadFont("SEGUISB.TTF", 35.f, &commandPool, &tracker, &fence, &queue);
+    fontSmall = imDraw.LoadFont("SEGOEUI.TTF", 18.f, &commandPool, &tracker, &fence, &queue);
 
 // -----------------------------------------------------------------------------
 
@@ -76,6 +72,14 @@ App::App()
 
     ResetItems();
     UpdateQuery();
+}
+
+App::~App()
+{
+    fence.Wait();
+    imDraw.DestroyFont(font);
+    imDraw.DestroyFont(fontSmall);
+    nms::ClearIconCache();
 }
 
 void App::ResetItems(bool end)
@@ -261,7 +265,7 @@ void App::Draw()
 
     // Input box
 
-    imDraw->DrawRect({
+    imDraw.DrawRect({
         .centerColor = backgroundColor,
         .borderColor = borderColor,
         .centerPos = pos - Vec2(0.f, hInputSize.y),
@@ -274,11 +278,11 @@ void App::Draw()
 
     {
         auto query = JoinQuery();
-        auto bounds = imDraw->MeasureString(query, font);
+        auto bounds = imDraw.MeasureString(query, font);
 
         if (!bounds.Empty())
         {
-            imDraw->DrawString(query,
+            imDraw.DrawString(query,
                 pos - Vec2(bounds.Width() / 2.f, 17.f),
                 font);
         }
@@ -289,7 +293,7 @@ void App::Draw()
 
     // Output box
 
-    imDraw->DrawRect({
+    imDraw.DrawRect({
         .centerColor = backgroundColor,
         .borderColor = borderColor,
         .centerPos = pos + Vec2(0.f, hOutputHeight + margin + borderWidth),
@@ -300,7 +304,7 @@ void App::Draw()
 
     // Highlight
 
-    imDraw->DrawRect({
+    imDraw.DrawRect({
         .centerColor = highlightColor,
         .centerPos = pos
             + Vec2(0.f, margin + borderWidth + outputItemHeight * (0.5f + selection)),
@@ -321,11 +325,11 @@ void App::Draw()
         {
             icon = &iconCache[path];
             icon->texture = nms::LoadIconFromPath(
-                context, commandPool, tracker, queue, fence,
+                &context, &commandPool, &tracker, &queue, &fence,
                 path.string());
 
             if (icon->texture)
-                icon->texID = imDraw->RegisterTexture(icon->texture, imDraw->defaultSampler);
+                icon->texID = imDraw.RegisterTexture(icon->texture, &imDraw.defaultSampler);
         }
         else
         {
@@ -334,7 +338,7 @@ void App::Draw()
 
         if (icon->texture)
         {
-            imDraw->DrawRect({
+            imDraw.DrawRect({
                 .centerPos = pos
                     + Vec2(-hOutputWidth + (iconSize / 2.f) + iconPadding,
                         margin + borderWidth + outputItemHeight * (0.5f + i)),
@@ -349,7 +353,7 @@ void App::Draw()
 
         // Filename
 
-        imDraw->DrawString(
+        imDraw.DrawString(
             path.filename().empty()
                 ? path.string()
                 : path.filename().string(),
@@ -360,7 +364,7 @@ void App::Draw()
 
         // Path
 
-        imDraw->DrawString(
+        imDraw.DrawString(
             path.has_parent_path()
                 ? path.parent_path().string()
                 : path.string(),
@@ -409,42 +413,42 @@ void App::Run()
             }
             glfwPollEvents();
 
-            imDraw->Reset();
+            imDraw.Reset();
             Draw();
 
             // Wait for frame
 
-            fence->Wait();
-            commandPool->Reset();
+            fence.Wait();
+            commandPool.Reset();
 
             // Record commands
 
-            auto cmd2 = commandPool->BeginSecondary(tracker, nova::RenderingDescription {
-                .colorFormats = { nova::Format(swapchain->format.format) },
+            auto cmd2 = commandPool.BeginSecondary(&tracker, nova::RenderingDescription {
+                .colorFormats = { nova::Format(swapchain.format.format) },
             });
-            imDraw->Record(cmd2);
+            imDraw.Record(cmd2);
             cmd2->End();
 
-            auto cmd = commandPool->BeginPrimary(tracker);
-            cmd->SetViewport(imDraw->bounds.Size(), false);
+            auto cmd = commandPool.BeginPrimary(&tracker);
+            cmd->SetViewport(imDraw.bounds.Size(), false);
             cmd->SetBlendState(1, true);
 
             // Update window size, record primary buffer and present
 
-            glfwSetWindowSize(window, i32(imDraw->bounds.Width()), i32(imDraw->bounds.Height()));
-            glfwSetWindowPos(window, i32(imDraw->bounds.min.x), i32(imDraw->bounds.min.y));
+            glfwSetWindowSize(window, i32(imDraw.bounds.Width()), i32(imDraw.bounds.Height()));
+            glfwSetWindowPos(window, i32(imDraw.bounds.min.x), i32(imDraw.bounds.min.y));
 
-            queue->Acquire({swapchain}, {fence});
+            queue.Acquire({&swapchain}, {&fence});
 
-            cmd->BeginRendering({swapchain->texture}, {}, {}, true);
-            cmd->ClearColor(0, Vec4(0.f, 1/255.f, 0.f, 0.f), imDraw->bounds.Size());
+            cmd->BeginRendering({swapchain.current}, {}, {}, true);
+            cmd->ClearColor(0, Vec4(0.f, 1/255.f, 0.f, 0.f), imDraw.bounds.Size());
             cmd->ExecuteCommands({cmd2});
             cmd->EndRendering();
 
-            cmd->Transition(swapchain->texture, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, VK_PIPELINE_STAGE_2_NONE, 0);
+            cmd->Transition(swapchain.current, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, VK_PIPELINE_STAGE_2_NONE, 0);
 
-            queue->Submit({cmd}, {fence}, {fence});
-            queue->Present({swapchain}, {fence});
+            queue.Submit({cmd}, {&fence}, {&fence});
+            queue.Present({&swapchain}, {&fence});
 
             if (!show)
                 glfwSetWindowShouldClose(window, GLFW_TRUE);

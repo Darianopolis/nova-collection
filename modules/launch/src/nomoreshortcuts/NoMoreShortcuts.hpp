@@ -10,20 +10,20 @@ using namespace nova::types;
 class App
 {
 public:
-    GLFWwindow* window;
+    nova::Context context;
+    nova::Queue& queue;
+    nova::ImDraw2D imDraw;
 
-    nova::Context* context = {};
-    VkSurfaceKHR surface = {};
-    nova::Swapchain* swapchain = {};
-    nova::Queue* queue = {};
-    nova::CommandPool* commandPool = {};
-    nova::Fence* fence = {};
-    nova::ResourceTracker* tracker = {};
+    nova::Surface surface = {};
+    nova::Swapchain swapchain = {};
+    nova::CommandPool commandPool = {};
+    nova::Fence fence = {};
+    nova::ResourceTracker tracker = {};
 
-    nova::ImDraw2D* imDraw = {};
     nova::ImFont* font = {};
     nova::ImFont* fontSmall = {};
 
+    GLFWwindow* window = {};
     i32 mWidth, mHeight;
 
     std::vector<std::string> keywords;
@@ -50,6 +50,7 @@ public:
     std::chrono::time_point<std::chrono::steady_clock> last_update;
 
     App();
+    ~App();
 
     void ResetItems(bool end = false);
 

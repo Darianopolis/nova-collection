@@ -30,11 +30,8 @@ namespace nms
     void ConvertToString(std::wstring_view input, std::string& output);
     inline std::string ConvertToString(std::wstring_view input)
     {
-        NOVA_LOG("Converting to std::string, input len = {}", input.size());
-        std::wcout << std::format(L"  Input = {}", input);
         std::string str;
         ConvertToString(input, str);
-        NOVA_LOG("  Output = {}, len = {}", str, str.size());
         return str;
     }
 
@@ -45,4 +42,6 @@ namespace nms
         nova::Queue* queue,
         nova::Fence* fence,
         std::string_view path);
+
+    void ClearIconCache();
 }
