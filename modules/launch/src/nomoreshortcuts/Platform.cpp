@@ -51,11 +51,11 @@ namespace nms
     }
 
     nova::Texture* LoadIconFromPath(
-        nova::Context* context,
-        nova::CommandPool* cmdPool,
-        nova::ResourceTracker* tracker,
-        nova::Queue* queue,
-        nova::Fence* fence,
+        nova::Context& context,
+        nova::CommandPool& cmdPool,
+        nova::ResourceTracker& tracker,
+        nova::Queue& queue,
+        nova::Fence& fence,
         std::string_view path)
     {
         // Query shell for path icon
@@ -131,10 +131,10 @@ namespace nms
 
         std::memcpy(staging.mapped, pixelData, dataSize);
 
-        auto cmd = cmdPool->BeginPrimary(tracker);
-        cmd->CopyToTexture(texture.get(), &staging);
-        queue->Submit({cmd}, {}, {fence});
-        fence->Wait();
+        auto cmd = cmdPool.Begin(tracker);
+        cmd->CopyToTexture(*texture, staging);
+        queue.Submit({cmd}, {}, {fence});
+        fence.Wait();
 
         return texture.get();
     }
