@@ -22,7 +22,7 @@ namespace nms
     {
         IWICImagingFactory* wic;
 
-        ankerl::unordered_dense::map<u64, Ptr<nova::Texture>> imageCache;
+        ankerl::unordered_dense::map<u64, nova::Texture> imageCache;
 
         ComState()
         {
@@ -50,12 +50,12 @@ namespace nms
         NmsComState.imageCache.clear();
     }
 
-    nova::Texture* LoadIconFromPath(
-        nova::Context& context,
-        nova::CommandPool& cmdPool,
-        nova::ResourceTracker& tracker,
-        nova::Queue& queue,
-        nova::Fence& fence,
+    nova::Texture LoadIconFromPath(
+        nova::Context context,
+        nova::CommandPool cmdPool,
+        nova::ResourceTracker tracker,
+        nova::Queue queue,
+        nova::Fence fence,
         std::string_view path)
     {
         // Query shell for path icon
@@ -85,7 +85,7 @@ namespace nms
             icon = info.hIcon;
 
             if (!icon)
-                return nullptr;
+                return {};
         }
 
         // Extract image data from icon
@@ -115,13 +115,13 @@ namespace nms
 
         u64 hash = ankerl::unordered_dense::detail::wyhash::hash(pixelData, dataSize);
         auto& texture = NmsComState.imageCache[hash];
-        if (texture)
-            return texture.get();
+        if (texture.IsValid())
+            return texture;
 
         NOVA_LOG("Loading icon {}, size = ({}, {})", path, width, height);
         NOVA_LOG("  Num images = {}", NmsComState.imageCache.size());
 
-        texture = std::make_unique<nova::Texture>(context, Vec3U(width, height, 0),
+        texture = nova::Texture(context, Vec3U(width, height, 0),
             nova::TextureUsage::Sampled,
             nova::Format::RGBA8U);
 
@@ -129,13 +129,13 @@ namespace nms
             nova::BufferUsage::TransferSrc,
             nova::BufferFlags::CreateMapped);
 
-        std::memcpy(staging.mapped, pixelData, dataSize);
+        std::memcpy(staging.GetMapped(), pixelData, dataSize);
 
         auto cmd = cmdPool.Begin(tracker);
-        cmd->CopyToTexture(*texture, staging);
+        cmd.CopyToTexture(texture, staging);
         queue.Submit({cmd}, {}, {fence});
         fence.Wait();
 
-        return texture.get();
+        return texture;
     }
 }

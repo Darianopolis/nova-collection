@@ -11,7 +11,7 @@ class App
 {
 public:
     nova::Context context;
-    nova::Queue& queue;
+    nova::Queue queue;
     nova::ImDraw2D imDraw;
 
     nova::Surface surface = {};
@@ -20,8 +20,8 @@ public:
     nova::Fence fence = {};
     nova::ResourceTracker tracker = {};
 
-    nova::ImFont* font = {};
-    nova::ImFont* fontSmall = {};
+    nova::ImFont font = {};
+    nova::ImFont fontSmall = {};
 
     GLFWwindow* window = {};
     i32 mWidth, mHeight;
@@ -37,7 +37,7 @@ public:
 
     struct IconResult
     {
-        nova::Texture* texture = {};
+        nova::Texture texture = {};
         nova::ImTextureID texID;
     };
 

@@ -3,11 +3,6 @@
 using namespace std::literals;
 
 App::App()
-    : context({
-        .debug = true,
-    })
-    , queue(context.graphics)
-    , imDraw(context)
 {
     glfwInit();
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
@@ -22,6 +17,12 @@ App::App()
     //   Or, do full screeen pass to filter out unintentional chroma key matches and
     //   apply chroma key based on alpha.
     SetLayeredWindowAttributes(hwnd, RGB(0, 1, 0), 0, LWA_COLORKEY);
+
+    context = nova::Context({
+        .debug = false,
+    });
+    queue = context.GetQueue(nova::QueueFlags::Graphics);
+    imDraw = nova::ImDraw2D(context);
 
     {
         GLFWimage iconImage;
@@ -77,8 +78,6 @@ App::App()
 App::~App()
 {
     fence.Wait();
-    imDraw.DestroyFont(font);
-    imDraw.DestroyFont(fontSmall);
     nms::ClearIconCache();
 }
 
@@ -328,15 +327,15 @@ void App::Draw()
                 context, commandPool, tracker, queue, fence,
                 path.string());
 
-            if (icon->texture)
-                icon->texID = imDraw.RegisterTexture(*icon->texture, imDraw.defaultSampler);
+            if (icon->texture.IsValid())
+                icon->texID = imDraw.RegisterTexture(icon->texture, imDraw.GetDefaultSampler());
         }
         else
         {
             icon = &iter->second;
         }
 
-        if (icon->texture)
+        if (icon->texture.IsValid())
         {
             imDraw.DrawRect({
                 .centerPos = pos
@@ -424,28 +423,28 @@ void App::Run()
             // Record commands
 
             auto cmd2 = commandPool.BeginSecondary(tracker, nova::RenderingDescription {
-                .colorFormats = { nova::Format(swapchain.format.format) },
+                .colorFormats = { nova::Format(swapchain->format.format) },
             });
             imDraw.Record(cmd2);
-            cmd2->End();
+            cmd2.End();
 
             auto cmd = commandPool.Begin(tracker);
-            cmd->SetViewport(imDraw.bounds.Size(), false);
-            cmd->SetBlendState(1, true);
+            cmd.SetViewport(imDraw.GetBounds().Size(), false);
+            cmd.SetBlendState(1, true);
 
             // Update window size, record primary buffer and present
 
-            glfwSetWindowSize(window, i32(imDraw.bounds.Width()), i32(imDraw.bounds.Height()));
-            glfwSetWindowPos(window, i32(imDraw.bounds.min.x), i32(imDraw.bounds.min.y));
+            glfwSetWindowSize(window, i32(imDraw.GetBounds().Width()), i32(imDraw.GetBounds().Height()));
+            glfwSetWindowPos(window, i32(imDraw.GetBounds().min.x), i32(imDraw.GetBounds().min.y));
 
             queue.Acquire({swapchain}, {fence});
 
-            cmd->BeginRendering({swapchain.GetCurrent()}, {}, {}, true);
-            cmd->ClearColor(0, Vec4(0.f, 1/255.f, 0.f, 0.f), imDraw.bounds.Size());
-            cmd->ExecuteCommands({cmd2});
-            cmd->EndRendering();
+            cmd.BeginRendering({swapchain.GetCurrent()}, {}, {}, true);
+            cmd.ClearColor(0, Vec4(0.f, 1/255.f, 0.f, 0.f), imDraw.GetBounds().Size());
+            cmd.ExecuteCommands({cmd2});
+            cmd.EndRendering();
 
-            cmd->Transition(swapchain.GetCurrent(), VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, VK_PIPELINE_STAGE_2_NONE, 0);
+            cmd.Transition(swapchain.GetCurrent(), VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, VK_PIPELINE_STAGE_2_NONE, 0);
 
             queue.Submit({cmd}, {fence}, {fence});
             queue.Present({swapchain}, {fence});

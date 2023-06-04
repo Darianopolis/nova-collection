@@ -35,12 +35,12 @@ namespace nms
         return str;
     }
 
-    nova::Texture* LoadIconFromPath(
-        nova::Context& context,
-        nova::CommandPool& cmdPool,
-        nova::ResourceTracker& tracker,
-        nova::Queue& queue,
-        nova::Fence& fence,
+    nova::Texture LoadIconFromPath(
+        nova::Context context,
+        nova::CommandPool cmdPool,
+        nova::ResourceTracker tracker,
+        nova::Queue queue,
+        nova::Fence fence,
         std::string_view path);
 
     void ClearIconCache();
