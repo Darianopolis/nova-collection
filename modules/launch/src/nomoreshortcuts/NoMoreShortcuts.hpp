@@ -3,7 +3,6 @@
 #include "Query.hpp"
 
 #include <Platform.hpp>
-#include <UnicodeCollator.hpp>
 
 using namespace nova::types;
 
@@ -28,6 +27,9 @@ public:
 
     std::vector<std::unique_ptr<ResultItem>> items;
     u32 selection;
+
+    index_t index;
+    file_searcher_t searcher;
 
     std::unique_ptr<FileResultList> fileResultList;
     std::unique_ptr<FavResultList> favResultList;
@@ -64,6 +66,8 @@ public:
 
     void OnChar(u32 codepoint);
     void OnKey(u32 key, i32 action, i32 mods);
+
+    void UpdateIndex();
 
     void Run();
 };

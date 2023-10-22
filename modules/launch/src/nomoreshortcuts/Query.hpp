@@ -3,17 +3,9 @@
 #include <nova/core/nova_Core.hpp>
 #include <nova/db/nova_Sqlite.hpp>
 
-#include <FileIndexer.hpp>
+#include <file_searcher.hpp>
 
 using namespace nova::types;
-
-enum class QueryAction
-{
-    APPEND,
-    SHORTEN,
-    RESET,
-    SET
-};
 
 class ResultItem
 {
@@ -25,7 +17,18 @@ public:
 class ResultList
 {
 public:
-    virtual void Query(QueryAction action, std::string_view query) = 0;
+    void Filter(nova::Span<std::string> query)
+    {
+        auto view = NOVA_ALLOC_STACK(std::string_view, query.size());
+        u32 count = 0;
+        for (u32 i = 0; i < query.size(); ++i) {
+            if (query[i].size()) {
+                view[count++] = query[i];
+            }
+        }
+        Filter(nova::Span(view, count));
+    }
+    virtual void Filter(nova::Span<std::string_view> query) = 0;
     virtual std::unique_ptr<ResultItem> Next(const ResultItem* item) = 0;
     virtual std::unique_ptr<ResultItem> Prev(const ResultItem* item) = 0;
     virtual bool Contains(const ResultItem& item) = 0;
@@ -34,36 +37,15 @@ public:
     virtual ~ResultList() = default;
 };
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+// -----------------------------------------------------------------------------
 
 class ResultListPriorityCollector : public ResultList
 {
     std::vector<ResultList*> lists;
 
 public:
+    using ResultList::Filter;
+
     ResultListPriorityCollector() {}
 
     void AddList(ResultList* list)
@@ -71,10 +53,10 @@ public:
         lists.push_back(list);
     }
 
-    void Query(QueryAction action, std::string_view query) override
+    void Filter(nova::Span<std::string_view> query)
     {
         for (auto l : lists)
-            l->Query(action, query);
+            l->Filter(query);
     }
 
     std::unique_ptr<ResultItem> Next(const ResultItem* item)
@@ -160,30 +142,7 @@ public:
     }
 };
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+// -----------------------------------------------------------------------------
 
 class FavResultItem : public ResultItem
 {
@@ -207,14 +166,15 @@ public:
 
 class FavResultList : public ResultList
 {
-    std::vector<std::string>* keywords;
+    std::vector<std::string> keywords;
     std::vector<std::unique_ptr<FavResultItem>> favourites;
     std::string dbName;
 
 public:
-    FavResultList(std::vector<std::string>* _keywords)
-        : keywords(_keywords)
-        , dbName(std::format("{}\\.nms\\app.db", getenv("USERPROFILE")))
+    using ResultList::Filter;
+
+    FavResultList()
+        : dbName(std::format("{}\\.nms\\app.db", getenv("USERPROFILE")))
     {
         Create();
         Load();
@@ -275,12 +235,15 @@ public:
             Load();
     }
 
-    void Query(QueryAction, std::string_view) final {}
+    void Filter(nova::Span<std::string_view> query) final
+    {
+        keywords.assign(query.begin(), query.end());
+    }
 
     bool Filter(const std::filesystem::path& path)
     {
         std::string str = path.string();
-        for (auto& keyword : *keywords)
+        for (auto& keyword : keywords)
         {
             if (std::search(
                     str.begin(), str.end(),
@@ -360,30 +323,7 @@ public:
     }
 };
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+// -----------------------------------------------------------------------------
 
 class FileResultItem : public ResultItem
 {
@@ -406,160 +346,32 @@ public:
 
 class FileResultList : public ResultList
 {
-    NodeIndex index;
-    u8 matchBits;
+    file_searcher_t* searcher;
     FavResultList* favourites;
-    std::vector<std::string> keywords;
-    std::unique_ptr<UnicodeCollator> collator;
 
 public:
-    FileResultList(FavResultList* _favourites)
-        : favourites(_favourites)
-        , matchBits(0)
-        , collator(UnicodeCollator::NewAsciiCollator())
+    using ResultList::Filter;
+
+    FileResultList(file_searcher_t* _searcher, FavResultList* _favourites)
+        : searcher(_searcher)
+        , favourites(_favourites)
+    {}
+
+    void Filter(nova::Span<std::string_view> query)
     {
-        NOVA_TIMEIT_RESET();
-        {
-            std::vector<std::unique_ptr<Node>> roots;
-            auto* c = Node::Load(getenv("USERPROFILE") + std::string("\\.nms\\C.index"));
-            auto* d = Node::Load(getenv("USERPROFILE") + std::string("\\.nms\\D.index"));
-            if (c) roots.emplace_back(c);
-            if (d) roots.emplace_back(d);
-            NOVA_TIMEIT("loaded-nodes");
-
-            std::vector<Node*> flat;
-            for (auto &root : roots)
-                root->ForEach([&](auto& n) { flat.emplace_back(&n); });
-
-            std::sort(std::execution::par_unseq, flat.begin(), flat.end(), [](auto& l, auto& r) {
-                return Node::CompareDepthLenLex(*l, *r) == std::weak_ordering::less;
-            });
-            NOVA_TIMEIT("sorted-nodes");
-
-            index = Flatten(flat);
-            NOVA_TIMEIT("flatten-nodes");
-        }
-
-        mi_collect(true);
-        NOVA_TIMEIT("node-cleanup");
-    }
-
-    void Filter(u8 matchBit, std::string_view keyword, bool lazy)
-    {
-        NOVA_LOG("Refiltering on keyword, [{}] lazy = {}", keyword, lazy);
-
-        auto needle = std::string{keyword};
-        std::transform(needle.begin(), needle.end(), needle.begin(), [](c8 c) {
-            return (c8)std::tolower(c);
-        });
-
-        NOVA_TIMEIT_RESET();
-        if (lazy)
-        {
-            std::for_each(std::execution::par_unseq, index.nodes.begin(), index.nodes.end(), [&](auto& view) {
-                if ((view.match & matchBit) == matchBit)
-                {
-                    std::string_view haystack { &index.str[view.strOffset], view.len };
-                    if (!collator->FuzzyFind(haystack, needle))
-                        view.match &= ~matchBit;
-                }
-            });
-        }
-        else
-        {
-            std::for_each(std::execution::par_unseq, index.nodes.begin(), index.nodes.end(), [&](auto& view) {
-                std::string_view haystack { &index.str[view.strOffset], view.len };
-                view.match = collator->FuzzyFind(haystack, needle)
-                    ? view.match | matchBit
-                    : view.match & ~matchBit;
-            });
-        }
-        NOVA_TIMEIT("filter-find");
-
-        for (auto& n : index.nodes)
-        {
-            auto& parent = index.nodes[n.parent];
-            n.inheritedMatch = (parent.strOffset != n.strOffset)
-                ? parent.inheritedMatch | n.match : n.match;
-        }
-
-        NOVA_TIMEIT("filter-propogated");
-    }
-
-    std::string MakeString(u32 i)
-    {
-        auto &node = index.nodes[i];
-        if (node.parent == i)
-            return std::string{&index.str[node.strOffset], node.len};
-        std::string parent_str = MakeString(node.parent);
-        if (!parent_str.ends_with('\\'))
-            parent_str += '\\';
-        parent_str.append(&index.str[node.strOffset], node.len);
-        return std::move(parent_str);
-    }
-
-    void Query(QueryAction, std::string_view _query)
-    {
-        auto query = std::string(_query);
-        std::regex words{"\\S+"};
-        std::vector<std::string> new_keywords;
-
-        {
-            auto i = std::sregex_iterator(query.begin(), query.end(), words);
-            auto end = std::sregex_iterator();
-            for (; i != end; ++i)
-                new_keywords.push_back(i->str());
-        }
-
-        for (auto i = 0; i < new_keywords.size(); ++i)
-        {
-            auto matchBit = static_cast<u8>(1 << i);
-            if (i >= keywords.size())
-            {
-                // New keyword, update tree match bits
-                std::for_each(std::execution::par_unseq, index.nodes.begin(), index.nodes.end(), [&](NodeFlat& p) {
-                    p.match |= matchBit;
-                    p.inheritedMatch &= ~matchBit;
-                });
-                matchBits |= matchBit;
-                Filter(matchBit, new_keywords[i], false);
-            }
-            else if (keywords[i] != new_keywords[i])
-            {
-                // Keyword change, refilter match column
-                // Memoized - Do a lazy match if new keyword contains the previous key
-                Filter(matchBit, new_keywords[i], new_keywords[i].find(keywords[i]) != std::string::npos);
-            }
-        }
-
-        // Clear any remaining keywords!
-        for (auto i = new_keywords.size(); i < keywords.size(); ++i)
-        {
-            auto matchBit = static_cast<u8>(1 << i);
-            std::for_each(std::execution::par_unseq, index.nodes.begin(), index.nodes.end(), [&](NodeFlat& p) {
-                p.match &= ~matchBit;
-                p.inheritedMatch &= ~matchBit;
-            });
-            matchBits &= ~matchBit;
-        }
-
-        keywords = std::move(new_keywords);
+        NOVA_LOGEXPR(searcher);
+        searcher->filter(query);
     }
 
     std::unique_ptr<ResultItem> Next(const ResultItem* item) override
     {
         auto* current = dynamic_cast<const FileResultItem*>(item);
-        usz i = current ? current->index + 1 : 0;
-        while (i < index.nodes.size())
-        {
-            auto &node = index.nodes[i];
-            if (((node.match | node.inheritedMatch) & matchBits) == matchBits)
-            {
-                auto path = std::filesystem::path(MakeString((u32)i));
-                if (!favourites->ContainsPath(path))
-                    return std::make_unique<FileResultItem>(std::move(path), i);
+        uint32_t i = current ? uint32_t(current->index) : UINT_MAX;
+        while ((i = searcher->find_next_file(i)) != UINT_MAX) {
+            auto path = std::filesystem::path(searcher->index->get_full_path(i));
+            if (!favourites->ContainsPath(path)) {
+                return std::make_unique<FileResultItem>(std::move(path), i);
             }
-            i++;
         }
         return nullptr;
     }
@@ -567,17 +379,12 @@ public:
     std::unique_ptr<ResultItem> Prev(const ResultItem* item) override
     {
         auto* current = dynamic_cast<const FileResultItem*>(item);
-        usz i = current ? current->index - 1 : index.nodes.size() - 1;
-        while (i != -1)
-        {
-            auto &node = index.nodes[i];
-            if (((node.match | node.inheritedMatch) & matchBits) == matchBits)
-            {
-                auto path = std::filesystem::path(MakeString((u32)i));
-                if (!favourites->ContainsPath(path))
-                    return std::make_unique<FileResultItem>(std::move(path), i);
+        uint32_t i = current ? uint32_t(current->index) : UINT_MAX;
+        while ((i = searcher->find_prev_file(i)) != UINT_MAX) {
+            auto path = std::filesystem::path(searcher->index->get_full_path(i));
+            if (!favourites->ContainsPath(path)) {
+                return std::make_unique<FileResultItem>(std::move(path), i);
             }
-            i--;
         }
         return nullptr;
     };
@@ -590,9 +397,6 @@ public:
     bool Filter(const ResultItem& item) override
     {
         auto* current = dynamic_cast<const FileResultItem*>(&item);
-        if (!current)
-            return false;
-        auto& node = index.nodes[current->index];
-        return ((node.match | node.inheritedMatch) & matchBits) == matchBits;
+        return current ? searcher->is_matched(uint32_t(current->index)) : false;
     }
 };

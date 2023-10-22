@@ -26,6 +26,8 @@ App::App()
     queue = context.GetQueue(nova::QueueFlags::Graphics, 0);
     imDraw = std::make_unique<nova::ImDraw2D>(context);
 
+    searcher.init(context, context.GetQueue(nova::QueueFlags::Compute, 0));
+
     {
         GLFWimage iconImage;
 
@@ -63,14 +65,15 @@ App::App()
     using namespace std::chrono;
 
     resultList = std::make_unique<ResultListPriorityCollector>();
-    favResultList = std::make_unique<FavResultList>(&keywords);
+    favResultList = std::make_unique<FavResultList>();
     NOVA_LOGEXPR(favResultList);
-    fileResultList = std::make_unique<FileResultList>(favResultList.get());
+    fileResultList = std::make_unique<FileResultList>(&searcher, favResultList.get());
     resultList->AddList(favResultList.get());
     resultList->AddList(fileResultList.get());
 
     show = false;
 
+    UpdateIndex();
     ResetItems();
     UpdateQuery();
 }
@@ -123,7 +126,7 @@ void App::ResetQuery()
     keywords.emplace_back();
     // tree.setMatchBits(1, 1, 0, 0);
     // tree.matchBits = 1;
-    resultList->Query(QueryAction::SET, "");
+    resultList->Filter(keywords);
     UpdateQuery();
 }
 
@@ -420,15 +423,7 @@ void App::Run()
 
             // Record commands
 
-            // auto cmd2 = commandPool.BeginSecondary(state, nova::RenderingDescription {
-            //     .colorFormats = { swapchain.GetFormat() },
-            // });
-            // imDraw.Record(cmd2);
-            // cmd2.End();
-
             auto cmd = commandPool.Begin();
-            // cmd.SetViewport(imDraw.GetBounds().Size(), false);
-            // cmd.SetBlendState(1, true);
 
             // Update window size, record primary buffer and present
 
@@ -437,12 +432,8 @@ void App::Run()
 
             queue.Acquire({swapchain}, {fence});
 
-            // cmd.BeginRendering({{}, swapchain.GetExtent()}, {swapchain.GetCurrent()});
-            // cmd.ClearColor(0, Vec4(0.f, 1/255.f, 0.f, 0.f), imDraw->GetBounds().Size());
-            // cmd.ExecuteCommands({cmd2});
             cmd.ClearColor(swapchain.GetCurrent(), Vec4(0.f, 1/255.f, 0.f, 0.f));
             imDraw->Record(cmd, swapchain.GetCurrent());
-            // cmd.EndRendering();
 
             cmd.Present(swapchain);
 
@@ -468,22 +459,25 @@ void App::OnChar(u32 codepoint)
     auto& keyword = keywords[keywords.size() - 1];
     if (c == ' ')
     {
-        if (keyword.size() == 0 || keywords.size() == 8) return;
-        [[maybe_unused]] auto set = static_cast<u8>(1 << keywords.size());
-        // tree.setMatchBits(set, set, set, 0);
-        // tree.matchBits |= set;
+        if (keyword.size() == 0 || keywords.size() == 8)
+            return;
         keywords.push_back("");
     }
     else
     {
         if (c < ' ' || c > '~')
             return;
-        // auto matchBit = static_cast<u8>(1 << (keywords.size() - 1));
         keyword += c;
-        // filter(matchBit, keyword, true);
-        resultList->Query(QueryAction::SET, JoinQuery());
+        resultList->Filter(keywords);
     }
     UpdateQuery();
+}
+
+void App::UpdateIndex()
+{
+    load_index(index, "index.bin");
+    searcher.set_index(index);
+    fileResultList->Filter(keywords);
 }
 
 void App::OnKey(u32 key, i32 action, i32 mods)
@@ -543,7 +537,7 @@ void App::OnKey(u32 key, i32 action, i32 mods)
             {
                 keyword.pop_back();
                 // filter(matchBit, keyword, false);
-                resultList->Query(QueryAction::SET, JoinQuery());
+                resultList->Filter(keywords);
                 UpdateQuery();
             }
             else if (keywords.size() > 1)
@@ -551,7 +545,7 @@ void App::OnKey(u32 key, i32 action, i32 mods)
                 keywords.pop_back();
                 // tree.setMatchBits(matchBit, 0, matchBit, 0);
                 // tree.matchBits &= ~matchBit;
-                resultList->Query(QueryAction::SET, JoinQuery());
+                resultList->Filter(keywords);
                 UpdateQuery();
             }
         }
@@ -585,20 +579,12 @@ void App::OnKey(u32 key, i32 action, i32 mods)
                     AllocConsole();
                     freopen("CONOUT$", "w", stdout);
 
-                    std::vector<c8> drives;
-                    c16 driveNames[1024];
-                    GetLogicalDriveStringsW(1023, driveNames);
-                    for (c16* drive = driveNames; *drive; drive += wcslen(drive) + 1)
-                        drives.push_back((c8)drive[0]);
-
-                    for (auto& d : drives)
-                    {
-                        auto* node = IndexDrive(d);
-                        auto saveLoc = std::format("{}\\.nms\\{}.index", getenv("USERPROFILE"), d);
-                        NOVA_LOG("Saving to {}", saveLoc);
-                        (void)node;
-                        node->Save(saveLoc);
-                    }
+                    index_filesystem(index);
+                    NOVA_LOG("Sorting...");
+                    sort_index(index);
+                    NOVA_LOG("Saving...");
+                    save_index(index, "index.bin");
+                    UpdateIndex();
 
                     NOVA_LOG("Indexing complete. Close this window and refresh the index with F5 in app.");
                     FreeConsole();
@@ -612,11 +598,12 @@ void App::OnKey(u32 key, i32 action, i32 mods)
         else
         {
             resultList = std::make_unique<ResultListPriorityCollector>();
-            favResultList = std::make_unique<FavResultList>(&keywords);
-            fileResultList = std::make_unique<FileResultList>(favResultList.get());
+            favResultList = std::make_unique<FavResultList>();
+            fileResultList = std::make_unique<FileResultList>(&searcher, favResultList.get());
             resultList->AddList(favResultList.get());
             resultList->AddList(fileResultList.get());
 
+            UpdateIndex();
             ResetItems();
             UpdateQuery();
         }
