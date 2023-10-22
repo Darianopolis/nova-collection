@@ -1,5 +1,9 @@
 #include "NoMoreShortcuts.hpp"
 
+#include <stb_image.h>
+
+#include <imgui.h>
+
 using namespace std::literals;
 
 App::App()
@@ -18,31 +22,27 @@ App::App()
     //   apply chroma key based on alpha.
     SetLayeredWindowAttributes(hwnd, RGB(0, 1, 0), 0, LWA_COLORKEY);
 
-    context = nova::Context({
-        .debug = false,
-    });
-    queue = context.GetQueue(nova::QueueFlags::Graphics);
-    imDraw = nova::ImDraw2D(context);
+    context = nova::Context::Create({ .debug = true });
+    queue = context.GetQueue(nova::QueueFlags::Graphics, 0);
+    imDraw = std::make_unique<nova::ImDraw2D>(context);
 
     {
         GLFWimage iconImage;
 
         i32 channels;
         iconImage.pixels = stbi_load("favicon.png", &iconImage.width, &iconImage.height, &channels, STBI_rgb_alpha);
-        NOVA_ON_SCOPE_EXIT(&) { stbi_image_free(iconImage.pixels); };
+        NOVA_CLEANUP(&) { stbi_image_free(iconImage.pixels); };
 
         glfwSetWindowIcon(window, 1, &iconImage);
     }
 
-    surface = nova::Surface(context, hwnd);
-    swapchain = nova::Swapchain(context, surface,
+    swapchain = nova::Swapchain::Create(context, glfwGetWin32Window(window),
         nova::TextureUsage::TransferDst
         | nova::TextureUsage::ColorAttach,
         nova::PresentMode::Fifo);
 
-    commandPool = nova::CommandPool(context, queue);
-    fence = nova::Fence(context);
-    tracker = nova::ResourceTracker(context);
+    commandPool = nova::CommandPool::Create(context, queue);
+    fence = nova::Fence::Create(context);
 
 // -----------------------------------------------------------------------------
 
@@ -53,8 +53,8 @@ App::App()
 
 // -----------------------------------------------------------------------------
 
-    font = imDraw.LoadFont("SEGUISB.TTF", 35.f, commandPool, tracker, fence, queue);
-    fontSmall = imDraw.LoadFont("SEGOEUI.TTF", 18.f, commandPool, tracker, fence, queue);
+    font = imDraw->LoadFont("SEGUISB.TTF", 35.f);
+    fontSmall = imDraw->LoadFont("SEGOEUI.TTF", 18.f);
 
 // -----------------------------------------------------------------------------
 
@@ -264,7 +264,7 @@ void App::Draw()
 
     // Input box
 
-    imDraw.DrawRect({
+    imDraw->DrawRect({
         .centerColor = backgroundColor,
         .borderColor = borderColor,
         .centerPos = pos - Vec2(0.f, hInputSize.y),
@@ -277,13 +277,13 @@ void App::Draw()
 
     {
         auto query = JoinQuery();
-        auto bounds = imDraw.MeasureString(query, font);
+        auto bounds = imDraw->MeasureString(query, *font);
 
         if (!bounds.Empty())
         {
-            imDraw.DrawString(query,
+            imDraw->DrawString(query,
                 pos - Vec2(bounds.Width() / 2.f, 17.f),
-                font);
+                *font);
         }
     }
 
@@ -292,7 +292,7 @@ void App::Draw()
 
     // Output box
 
-    imDraw.DrawRect({
+    imDraw->DrawRect({
         .centerColor = backgroundColor,
         .borderColor = borderColor,
         .centerPos = pos + Vec2(0.f, hOutputHeight + margin + borderWidth),
@@ -303,7 +303,7 @@ void App::Draw()
 
     // Highlight
 
-    imDraw.DrawRect({
+    imDraw->DrawRect({
         .centerColor = highlightColor,
         .centerPos = pos
             + Vec2(0.f, margin + borderWidth + outputItemHeight * (0.5f + selection)),
@@ -323,21 +323,19 @@ void App::Draw()
         if (iter == iconCache.end())
         {
             icon = &iconCache[path];
-            icon->texture = nms::LoadIconFromPath(
-                context, commandPool, tracker, queue, fence,
-                path.string());
+            icon->texture = nms::LoadIconFromPath(context, path.string());
 
-            if (icon->texture.IsValid())
-                icon->texID = imDraw.RegisterTexture(icon->texture, imDraw.GetDefaultSampler());
+            if (icon->texture)
+                icon->texID = imDraw->RegisterTexture(icon->texture, imDraw->GetDefaultSampler());
         }
         else
         {
             icon = &iter->second;
         }
 
-        if (icon->texture.IsValid())
+        if (icon->texture)
         {
-            imDraw.DrawRect({
+            imDraw->DrawRect({
                 .centerPos = pos
                     + Vec2(-hOutputWidth + (iconSize / 2.f) + iconPadding,
                         margin + borderWidth + outputItemHeight * (0.5f + i)),
@@ -352,25 +350,25 @@ void App::Draw()
 
         // Filename
 
-        imDraw.DrawString(
+        imDraw->DrawString(
             path.filename().empty()
                 ? path.string()
                 : path.filename().string(),
             pos + Vec2(-hOutputWidth, margin + borderWidth)
                 + Vec2(0.f, outputItemHeight * i)
                 + textInset,
-            font);
+            *font);
 
         // Path
 
-        imDraw.DrawString(
+        imDraw->DrawString(
             path.has_parent_path()
                 ? path.parent_path().string()
                 : path.string(),
             pos + Vec2(-hOutputWidth, margin + borderWidth)
                 + Vec2(0.f, outputItemHeight * i)
                 + textSmallInset,
-            fontSmall);
+            *fontSmall);
     }
 }
 
@@ -412,7 +410,7 @@ void App::Run()
             }
             glfwPollEvents();
 
-            imDraw.Reset();
+            imDraw->Reset();
             Draw();
 
             // Wait for frame
@@ -422,29 +420,31 @@ void App::Run()
 
             // Record commands
 
-            auto cmd2 = commandPool.BeginSecondary(tracker, nova::RenderingDescription {
-                .colorFormats = { nova::Format(swapchain->format.format) },
-            });
-            imDraw.Record(cmd2);
-            cmd2.End();
+            // auto cmd2 = commandPool.BeginSecondary(state, nova::RenderingDescription {
+            //     .colorFormats = { swapchain.GetFormat() },
+            // });
+            // imDraw.Record(cmd2);
+            // cmd2.End();
 
-            auto cmd = commandPool.Begin(tracker);
-            cmd.SetViewport(imDraw.GetBounds().Size(), false);
-            cmd.SetBlendState(1, true);
+            auto cmd = commandPool.Begin();
+            // cmd.SetViewport(imDraw.GetBounds().Size(), false);
+            // cmd.SetBlendState(1, true);
 
             // Update window size, record primary buffer and present
 
-            glfwSetWindowSize(window, i32(imDraw.GetBounds().Width()), i32(imDraw.GetBounds().Height()));
-            glfwSetWindowPos(window, i32(imDraw.GetBounds().min.x), i32(imDraw.GetBounds().min.y));
+            glfwSetWindowSize(window, i32(imDraw->GetBounds().Width()), i32(imDraw->GetBounds().Height()));
+            glfwSetWindowPos(window, i32(imDraw->GetBounds().min.x), i32(imDraw->GetBounds().min.y));
 
             queue.Acquire({swapchain}, {fence});
 
-            cmd.BeginRendering({swapchain.GetCurrent()}, {}, {}, true);
-            cmd.ClearColor(0, Vec4(0.f, 1/255.f, 0.f, 0.f), imDraw.GetBounds().Size());
-            cmd.ExecuteCommands({cmd2});
-            cmd.EndRendering();
+            // cmd.BeginRendering({{}, swapchain.GetExtent()}, {swapchain.GetCurrent()});
+            // cmd.ClearColor(0, Vec4(0.f, 1/255.f, 0.f, 0.f), imDraw->GetBounds().Size());
+            // cmd.ExecuteCommands({cmd2});
+            cmd.ClearColor(swapchain.GetCurrent(), Vec4(0.f, 1/255.f, 0.f, 0.f));
+            imDraw->Record(cmd, swapchain.GetCurrent());
+            // cmd.EndRendering();
 
-            cmd.Transition(swapchain.GetCurrent(), VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, VK_PIPELINE_STAGE_2_NONE, 0);
+            cmd.Present(swapchain);
 
             queue.Submit({cmd}, {fence}, {fence});
             queue.Present({swapchain}, {fence});

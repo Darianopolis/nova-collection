@@ -4,7 +4,10 @@ if Project "nms" then
         "src/indexer",
         "src/nomoreshortcuts",
     }
-    Import { "nova" }
+    Import {
+        "nova",
+        "stb",
+    }
     Artifact { "out/NoMoreShortcuts", type = "Window" }
     Artifact { "out/nms", type = "Console" }
 end

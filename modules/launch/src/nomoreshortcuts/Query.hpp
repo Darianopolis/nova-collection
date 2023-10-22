@@ -1,7 +1,7 @@
 #pragma once
 
 #include <nova/core/nova_Core.hpp>
-#include <nova/sqlite/nova_Sqlite.hpp>
+#include <nova/db/nova_Sqlite.hpp>
 
 #include <FileIndexer.hpp>
 

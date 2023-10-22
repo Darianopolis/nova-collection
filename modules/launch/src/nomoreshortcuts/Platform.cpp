@@ -52,16 +52,12 @@ namespace nms
 
     nova::Texture LoadIconFromPath(
         nova::Context context,
-        nova::CommandPool cmdPool,
-        nova::ResourceTracker tracker,
-        nova::Queue queue,
-        nova::Fence fence,
         std::string_view path)
     {
         // Query shell for path icon
 
         HICON icon = {};
-        NOVA_ON_SCOPE_EXIT(&) { DestroyIcon(icon); };
+        NOVA_CLEANUP(&) { DestroyIcon(icon); };
 
         SHFILEINFO info = {};
 
@@ -92,14 +88,14 @@ namespace nms
 
         IWICBitmap* bitmap = nullptr;
         NmsComState.wic->CreateBitmapFromHICON(icon, &bitmap);
-        NOVA_ON_SCOPE_EXIT(&) { bitmap->Release(); };
+        NOVA_CLEANUP(&) { bitmap->Release(); };
 
         u32 width, height;
         bitmap->GetSize(&width, &height);
 
         IWICFormatConverter* converter = nullptr;
         NmsComState.wic->CreateFormatConverter(&converter);
-        NOVA_ON_SCOPE_EXIT(&) { converter->Release(); };
+        NOVA_CLEANUP(&) { converter->Release(); };
         converter->Initialize(
             bitmap,
             GUID_WICPixelFormat32bppRGBA,
@@ -115,26 +111,18 @@ namespace nms
 
         u64 hash = ankerl::unordered_dense::detail::wyhash::hash(pixelData, dataSize);
         auto& texture = NmsComState.imageCache[hash];
-        if (texture.IsValid())
+        if (texture)
             return texture;
 
         NOVA_LOG("Loading icon {}, size = ({}, {})", path, width, height);
         NOVA_LOG("  Num images = {}", NmsComState.imageCache.size());
 
-        texture = nova::Texture(context, Vec3U(width, height, 0),
+        texture = nova::Texture::Create(context, Vec3U(width, height, 0),
             nova::TextureUsage::Sampled,
-            nova::Format::RGBA8U);
+            nova::Format::RGBA8_UNorm);
 
-        auto staging = nova::Buffer(context, dataSize,
-            nova::BufferUsage::TransferSrc,
-            nova::BufferFlags::CreateMapped);
-
-        std::memcpy(staging.GetMapped(), pixelData, dataSize);
-
-        auto cmd = cmdPool.Begin(tracker);
-        cmd.CopyToTexture(texture, staging);
-        queue.Submit({cmd}, {}, {fence});
-        fence.Wait();
+        texture.Set({}, texture.GetExtent(), pixelData);
+        texture.Transition(nova::TextureLayout::Sampled);
 
         return texture;
     }
