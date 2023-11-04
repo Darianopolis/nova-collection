@@ -86,7 +86,7 @@ struct project_t
     std::vector<define_t>    build_defines;
     std::vector<define_t>    defines;
 
-    artifact_t artifact;
+    std::optional<artifact_t> artifact;
 };
 
 struct project_artifactory_t
@@ -94,6 +94,7 @@ struct project_artifactory_t
     std::unordered_map<std::string_view, project_t*> projects;
 };
 
+void populate_artifactory(project_artifactory_t& artifactory);
 void generate_build(project_artifactory_t& artifactory,  project_t& project, project_t& output);
 void debug_project(project_t& project);
 void build_project(project_t& project);

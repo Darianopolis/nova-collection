@@ -56,5 +56,7 @@ void debug_project(project_t& project)
     print_all("build_defines",  project.build_defines);
     print_all("defines",        project.defines);
 
-    std::cout << "  artifact: " << project.artifact << '\n';
+    if (project.artifact) {
+        std::cout << "  artifact: " << project.artifact.value() << '\n';
+    }
 }
