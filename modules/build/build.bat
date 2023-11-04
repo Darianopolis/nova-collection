@@ -7,6 +7,7 @@ mkdir out >nul 2>&1
 cd build
 cl /c /nologo /EHsc ^
     /std:c++latest ^
+    /Zc:preprocessor ^
     /I..\src ^
     /I..\vendor\sol2\include ^
     /I..\vendor\luajit\src ^

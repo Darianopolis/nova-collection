@@ -1,0 +1,154 @@
+#include <sol/sol.hpp>
+
+#include <iostream>
+#include <format>
+#include <filesystem>
+
+#define println(fmt, ...) (std::cout << std::format(fmt "\n" __VA_OPT__(,) __VA_ARGS__))
+
+std::vector<std::string> get_strings(sol::object obj)
+{
+    std::vector<std::string> out;
+    if (obj.is<sol::table>()) {
+        auto table = obj.as<sol::table>();
+        table.for_each([&](auto, auto value) {
+            out.emplace_back(value.as<std::string>());
+        });
+    } else {
+        out.emplace_back(obj.as<std::string>());
+    }
+
+    return out;
+}
+
+void bldr_run(const std::string& cmd, const std::filesystem::path& dir)
+{
+    auto old_cwd = std::filesystem::current_path();
+    std::filesystem::current_path(dir);
+    std::system(cmd.c_str());
+    std::filesystem::current_path(old_cwd);
+}
+
+void clean_dir(const std::filesystem::path& dir)
+{
+    if (std::filesystem::exists(dir)) {
+        std::filesystem::remove_all(dir);
+    }
+    std::filesystem::create_directories(dir);
+}
+
+void process_file(std::string_view name)
+{
+    sol::state lua;
+
+    lua.open_libraries(
+        sol::lib::base, sol::lib::coroutine,
+        sol::lib::string, sol::lib::io);
+
+    auto cwd = std::filesystem::current_path();
+    std::filesystem::path dir;
+
+    lua.set_function("Begin", [&](std::string_view _name) {
+        if (name != _name) return false;
+
+        dir = "cached";
+        dir /= name;
+        std::filesystem::create_directories(dir);
+
+        return true;
+    });
+
+    lua.set_function("Git", [&](sol::table table) {
+        println("  Git:");
+        auto url = table[1].get<std::string_view>();
+        auto branch = table["branch"].get<std::string_view>();
+        println("    url:    {}", url);
+        println("    branch: {}", branch);
+
+        clean_dir(dir);
+        bldr_run(std::format("git clone {} .", url), dir);
+        if (branch.size()) {
+            bldr_run(std::format("git checkout {}", branch), dir);
+        }
+        bldr_run("git pull", dir);
+    });
+
+    lua.set_function("Get", [&](sol::table table) {
+        println("  Get:");
+        auto url = table["url"].get<std::string_view>();
+        auto flatten = table["flatten"].get<std::string_view>();
+        println("    url:     {}", url);
+        println("    flatten: {}", flatten);
+
+        clean_dir(dir);
+        clean_dir("staging");
+        bldr_run(std::format("wget {}", url), "staging");
+        for (auto& file : std::filesystem::directory_iterator("staging")) {
+            if (file.path().extension() == ".zip") {
+                bldr_run(std::format("7z x {} -ostaging/unzipped", file.path().string()), cwd);
+                auto src = std::filesystem::path("staging/unzipped");
+                if (flatten.size()) src /= flatten;
+                for (auto& unzipped_file : std::filesystem::directory_iterator(src)) {
+                    std::filesystem::copy(unzipped_file.path(), dir / unzipped_file.path().filename());
+                }
+            } else {
+                std::filesystem::copy_file(file.path(), dir / file.path().filename());
+            }
+        }
+    });
+
+    lua.set_function("Compile", [&](sol::object obj) {
+        println("  Compile:");
+        for (auto& src : get_strings(obj)) {
+            println("    - {}", src);
+        }
+        if (obj.is<sol::table>()) {
+            auto table = obj.as<sol::table>();
+            if (table["type"]) {
+                println("    [as {}]", table["type"].get<std::string_view>());
+            }
+        }
+    });
+
+    lua.set_function("Include", [&](sol::object obj) {
+        println("  Include:");
+        for (auto& inc : get_strings(obj)) {
+            println("    - {}", inc);
+        }
+    });
+
+    lua.set_function("Run", [&](sol::table table) {
+        println("  Run:");
+        auto command = table[1].get<std::string_view>();
+        auto override_dir = table["dir"].get<std::string_view>();
+        println("    command: {}", command);
+        println("    dir:     {}", override_dir);
+
+        auto cmd_dir = dir;
+        if (override_dir.size()) {
+            cmd_dir /= override_dir;
+        }
+        bldr_run(std::string(command), cmd_dir);
+    });
+
+    lua.set_function("Link", [&](sol::object obj) {
+        println("  Link:");
+        for (auto& link : get_strings(obj)) {
+            println("    - {}", link);
+        }
+    });
+
+    sol::environment env(lua, sol::create, lua.globals());
+    auto res = lua.script_file("test_scripts/test.bldr.lua", env);
+}
+
+int main()
+{
+    try {
+        process_file("sol2");
+        process_file("luajit");
+        process_file("sqlite3");
+    } catch (const std::exception& e) {
+        println("Error: {}", e.what());
+    }
+}
