@@ -122,4 +122,4 @@ struct program_exec_t
 
 };
 
-void execute_program(const program_exec_t& info, std::span<const std::string_view> additional_arguments);
+void execute_program(const program_exec_t& info);

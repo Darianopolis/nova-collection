@@ -20,23 +20,23 @@ void generate_build(project_artifactory_t& artifactory,  project_t& project, pro
         target.insert_range(target.end(), source);
     };
 
-    auto collect = [&](this auto&& self, project_t& project)
+    auto collect = [&](this auto&& self, project_t& cur_project)
     {
-        if (visited.contains(project.name)) return;
-        visited.insert(project.name);
+        if (visited.contains(cur_project.name)) return;
+        visited.insert(cur_project.name);
 
-        output.imports.push_back(project.name);
+        output.imports.push_back(cur_project.name);
 
-        insert_all(output.includes,       project.includes);
-        insert_all(output.force_includes, project.force_includes);
-        insert_all(output.lib_paths,      project.lib_paths);
-        insert_all(output.links,          project.links);
+        insert_all(output.includes,       cur_project.includes);
+        insert_all(output.force_includes, cur_project.force_includes);
+        insert_all(output.lib_paths,      cur_project.lib_paths);
+        insert_all(output.links,          cur_project.links);
         insert_all(output.build_defines,
-            &project == &project
-                ? project.build_defines
-                : project.defines);
+            &cur_project == &project
+                ? cur_project.build_defines
+                : cur_project.defines);
 
-        for (auto& import : project.imports) {
+        for (auto& import : cur_project.imports) {
             self(*artifactory.projects.at(import));
         }
     };
@@ -80,7 +80,10 @@ void build_project(project_t& project)
 {
     auto artifacts_dir = std::filesystem::current_path() / "artifacts";
 
-    {
+#pragma omp parallel for
+    for (uint32_t i = 0; i < project.sources.size(); ++i) {
+        auto& source = project.sources[i];
+
         program_exec_t info;
         auto dir = artifacts_dir / project.name;
         std::filesystem::create_directories(dir);
@@ -97,21 +100,30 @@ void build_project(project_t& project)
         arg(info, "/c");
         arg(info, "/nologo");
         arg(info, "/arch:AVX512");
-        arg(info, "/EHsc");
         arg(info, "/MD");
-        arg(info, "/openmp:llvm");
         arg(info, "/Zc:preprocessor");
-        arg(info, "/Zc:__cplusplus");
         arg(info, "/fp:fast");
         arg(info, "/utf-8");
         arg(info, "/permissive-");
         arg(info, "/O2");
         arg(info, "/INCREMENTAL");
-        arg(info, "/EHsc");
-        arg(info, "/Zc:__cplusplus");
-        arg(info, "/std:c++latest");
-        arg(info, "/experimental:module");
-        arg(info, "/translateInclude");
+
+        if (source.type == source_type_t::c) {
+            arg(info, "/std:c17");
+            arg(info, "/Tc", source.file.to_fspath().string());
+        } else {
+            arg(info, "/EHsc");
+            arg(info, "/openmp:llvm");
+            arg(info, "/Zc:__cplusplus");
+            arg(info, "/EHsc");
+            arg(info, "/Zc:__cplusplus");
+            arg(info, "/std:c++latest");
+            if (source.type == source_type_t::cpp) {
+                arg(info, "/experimental:module");
+                arg(info, "/translateInclude");
+            }
+            arg(info, "/Tp", source.file.to_fspath().string());
+        }
 
         for (auto& include : project.includes)       arg(info, "/I",  include.to_fspath().string());
         for (auto& include : project.force_includes) arg(info, "/FI", include.to_fspath().string());
@@ -120,14 +132,7 @@ void build_project(project_t& project)
             else                      arg(info, "/D", define.key, "=", define.value);
         }
 
-#pragma omp parallel for
-        for (uint32_t i = 0; i < project.sources.size(); ++i) {
-            auto& source = project.sources[i];
-            execute_program(info, std::array<std::string_view, 2> {
-                "/Tp",
-                source.file.to_fspath().string(),
-            });
-        }
+        execute_program(info);
     }
 
     if (project.artifact) {
@@ -150,6 +155,7 @@ void build_project(project_t& project)
         arg(info, "/NODEFAULTLIB:libcmtd.lib");
         arg(info, "/SUBSYSTEM:CONSOLE");
         arg(info, "/OUT:", project.artifact->path.to_fspath().string());
+        std::filesystem::create_directories(project.artifact->path.to_fspath().parent_path());
 
         for (auto& lib_path : project.lib_paths) {
             arg(info, "/LIBPATH:", lib_path.to_fspath().string());
@@ -180,11 +186,11 @@ void build_project(project_t& project)
         arg(info, "comsuppw.lib");
         arg(info, "onecore.lib");
 
-        execute_program(info, {});
+        execute_program(info);
     }
 }
 
-void execute_program(const program_exec_t& info, std::span<const std::string_view> additional_arguments)
+void execute_program(const program_exec_t& info)
 {
     std::stringstream ss;
     auto cmd = [&](std::string_view value)
@@ -198,10 +204,9 @@ void execute_program(const program_exec_t& info, std::span<const std::string_vie
 
     cmd(info.executable.to_fspath().string());
     for (auto& arg : info.arguments) cmd(arg);
-    for (auto& arg : additional_arguments) cmd(arg);
 
     std::string cmd_line = ss.str();
-    // std::cout << "Running command:\n" << cmd_line << '\n';
+    std::cout << "Running command:\n" << cmd_line << '\n';
 
     STARTUPINFOA startup{};
     PROCESS_INFORMATION process{};

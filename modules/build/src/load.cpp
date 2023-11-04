@@ -30,7 +30,7 @@ values_t get_values(sol::object obj)
     return values;
 }
 
-void populate_artifactory_from_file(project_artifactory_t& artifactory, const std::string& file)
+void populate_artifactory_from_file(project_artifactory_t& artifactory, const std::filesystem::path& file)
 {
     sol::state lua;
 
@@ -40,7 +40,14 @@ void populate_artifactory_from_file(project_artifactory_t& artifactory, const st
         sol::lib::string,
         sol::lib::io);
 
+    auto default_dir = file.parent_path();
+
     project_t* project = nullptr;
+
+    // TODO:
+    lua.set_function("Os", []{});
+    lua.set_function("Error", []{});
+    lua.set_function("Dynamic", []{});
 
     lua.set_function("Project", [&](std::string_view name) {
         if (project) {
@@ -49,7 +56,7 @@ void populate_artifactory_from_file(project_artifactory_t& artifactory, const st
 
         project = new project_t{};
         project->name = std::string(name);
-        project->dir = path_t(std::filesystem::absolute(std::filesystem::current_path()).string());
+        project->dir = path_t(default_dir.string());
 
         artifactory.projects.insert({ project->name, project });
 
@@ -89,6 +96,31 @@ void populate_artifactory_from_file(project_artifactory_t& artifactory, const st
         }
     });
 
+    lua.set_function("Define", [&](sol::object obj) {
+        auto values = get_values(obj);
+        bool build_scope = true;
+        bool import_scope = true;
+        if (values.options.contains("scope")) {
+            auto scope = values.options.at("scope");
+            if (scope == "build") {
+                import_scope = false;
+            }
+        }
+        for (auto& define : values.values) {
+            std::string key;
+            std::string value;
+            auto equals = define.find_first_of('=');
+            if (equals != std::string::npos) {
+                key = define.substr(0, equals);
+                value = define.substr(equals + 1);
+            } else {
+                key = define;
+            }
+            if (build_scope)  project->build_defines.push_back({ key, value });
+            if (import_scope) project->defines.push_back({ key, value });
+        }
+    });
+
     lua.set_function("Artifact", [&](sol::object obj) {
         auto values = get_values(obj);
         artifact_t artifact{};
@@ -108,7 +140,7 @@ void populate_artifactory_from_file(project_artifactory_t& artifactory, const st
     });
 
     sol::environment env(lua, sol::create, lua.globals());
-    lua.script_file(file);
+    lua.script_file(file.string());
 
     if (project) {
         debug_project(*project);
@@ -117,6 +149,10 @@ void populate_artifactory_from_file(project_artifactory_t& artifactory, const st
 
 void populate_artifactory(project_artifactory_t& artifactory)
 {
-    populate_artifactory_from_file(artifactory, "global.bldr.lua");
-    populate_artifactory_from_file(artifactory, "bldr.lua");
+    for (auto& file : std::filesystem::directory_iterator(std::filesystem::current_path())) {
+        if (file.path().string().ends_with("bldr.lua")) {
+            std::cout << "Loading bldr file: " << file.path().string() << '\n';
+            populate_artifactory_from_file(artifactory, file.path());
+        }
+    }
 }
