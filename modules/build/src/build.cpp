@@ -183,18 +183,22 @@ void generate_build(project_artifactory_t& artifactory,  project_t& project, pro
     output.artifact = project.artifact;
 }
 
-void build_project(project_t& project)
+void build_project(project_t& project, flags_t flags)
 {
-    auto artifacts_dir = fs::current_path() / "artifacts";
+    auto artifacts_dir = s_paths.artifacts;
+    auto project_artifacts = artifacts_dir / project.name;
+    if (is_set(flags, flags_t::clean)) {
+        std::cout << "Cleaning project artifacts\n";
+        fs::remove_all(project_artifacts);
+    }
 
 #pragma omp parallel for
     for (uint32_t i = 0; i < project.sources.size(); ++i) {
         auto& source = project.sources[i];
 
         program_exec_t info;
-        auto dir = artifacts_dir / project.name;
-        fs::create_directories(dir);
-        info.working_directory = {dir.string()};
+        fs::create_directories(project_artifacts);
+        info.working_directory = {project_artifacts.string()};
 
         auto arg = [&](auto& exec_info, auto&&... args)
         {
@@ -207,30 +211,30 @@ void build_project(project_t& project)
         arg(info, "/c");
         arg(info, "cl");
 
-        arg(info, "/c");
-        arg(info, "/nologo");
-        arg(info, "/arch:AVX2");
-        arg(info, "/MD");
-        arg(info, "/Zc:preprocessor");
-        arg(info, "/fp:fast");
-        arg(info, "/utf-8");
-        arg(info, "/permissive-");
-        arg(info, "/O2");
-        arg(info, "/INCREMENTAL");
+        // TODO: Parameterize
+
+        arg(info, "/c");               // Compile without linking
+        arg(info, "/nologo");          // Suppress banner
+        arg(info, "/arch:AVX2");       // AVX2 vector extensions
+        arg(info, "/MD");              // Use dynamic non-debug CRT. TODO: Parameterize
+        arg(info, "/Zc:preprocessor"); // Use conforming preprocessor
+        arg(info, "/permissive-");     // Disable permissive mode
+        arg(info, "/fp:fast");         // Allow floating point reordering
+        arg(info, "/utf-8");           // Set source and execution character sets
+        arg(info, "/O2");              // Use maximum options
+        arg(info, "/Ob3");             // Use maximum inlining
 
         if (source.type == source_type_t::c) {
             arg(info, "/std:c17");
             arg(info, "/Tc", source.file.to_fspath().string());
         } else {
-            arg(info, "/EHsc");
-            arg(info, "/openmp:llvm");
-            arg(info, "/Zc:__cplusplus");
-            arg(info, "/EHsc");
-            arg(info, "/Zc:__cplusplus");
-            arg(info, "/std:c++latest");
+            arg(info, "/EHsc");           // Full exception unwinding
+            arg(info, "/openmp:llvm");    // LLVM openmp (enables unsigned loop counters)
+            arg(info, "/Zc:__cplusplus"); // Use correct __cplusplus macro value
+            arg(info, "/std:c++latest");  // Use latest C++ language version
             if (source.type == source_type_t::cpp) {
-                arg(info, "/experimental:module");
-                arg(info, "/translateInclude");
+                arg(info, "/experimental:module"); // Enable modules
+                arg(info, "/translateInclude");    // Enable header include -> module import translation
             }
             arg(info, "/Tp", source.file.to_fspath().string());
         }
@@ -246,6 +250,16 @@ void build_project(project_t& project)
     }
 
     if (project.artifact) {
+        auto& artifact = project.artifact.value();
+        auto path = artifact.path.to_fspath();
+        if (is_set(flags, flags_t::clean)) {
+            for (auto& ext : { ".ilk", ".exe", ".exp", ".lib", ".pdb", ".dll" }) {
+                path.replace_extension(ext);
+                std::cout << "Cleaning artifact [" << path.string() << "]\n";
+                fs::remove(path);
+            }
+        }
+
         program_exec_t info;
         info.working_directory = {artifacts_dir.string()};
 
@@ -261,14 +275,24 @@ void build_project(project_t& project)
         arg(info, "link");
 
         arg(info, "/nologo");
-        arg(info, "/IGNORE:4099");
-        arg(info, "/DYNAMICBASE:NO");
+        arg(info, "/IGNORE:4099");    // PDB 'filename' was not found with 'object/library' or at 'path'; linking object as if no debug info
+        arg(info, "/INCREMENTAL");    // TODO: Add option for full optimizing link
+        arg(info, "/DYNAMICBASE:NO"); // Disable address space layout randomization.
+
         arg(info, "/NODEFAULTLIB:msvcrtd.lib");
         arg(info, "/NODEFAULTLIB:libcmt.lib");
         arg(info, "/NODEFAULTLIB:libcmtd.lib");
-        arg(info, "/SUBSYSTEM:CONSOLE");
-        arg(info, "/OUT:", project.artifact->path.to_fspath().string());
-        fs::create_directories(project.artifact->path.to_fspath().parent_path());
+
+        if (artifact.type == artifact_type_t::console || artifact.type == artifact_type_t::window) {
+            arg(info, "/SUBSYSTEM:", artifact.type == artifact_type_t::console ? "CONSOLE" : "WINDOWS");
+            path.replace_extension(".exe");
+            arg(info, "/OUT:", path.string());
+            fs::create_directories(path.parent_path());
+        } else if (artifact.type == artifact_type_t::shared_library) {
+            arg(info, "/DLL");
+            path.replace_extension(".dll");
+            arg(info, "/OUT:", path.string());
+        }
 
         for (auto& lib_path : project.lib_paths) {
             arg(info, "/LIBPATH:", lib_path.to_fspath().string());

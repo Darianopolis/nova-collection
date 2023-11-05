@@ -1,5 +1,12 @@
 @echo off
 
+where /q cl
+goto env_missing_%errorlevel%
+:env_missing_1
+echo Setting up env...
+call "C:/Program Files/Microsoft Visual Studio/2022/Community/VC/Auxiliary/Build/vcvarsx86_amd64.bat"
+:env_missing_0
+
 mkdir vendor
 cd vendor
 

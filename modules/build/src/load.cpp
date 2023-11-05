@@ -126,8 +126,9 @@ void populate_artifactory_from_file(project_artifactory_t& artifactory, const fs
         artifact_t artifact{};
         artifact.path = {values.values.front(), &project->dir};
         auto& type = values.options.at("type");
-        if      (type == "Console") { artifact.type = artifact_type_t::executable;     artifact.path.path += ".exe"; }
-        else if (type == "Shared")  { artifact.type = artifact_type_t::shared_library; artifact.path.path += ".dll"; }
+        if      (type == "Console") { artifact.type = artifact_type_t::console;        }
+        if      (type == "Window")  { artifact.type = artifact_type_t::window;         }
+        else if (type == "Shared")  { artifact.type = artifact_type_t::shared_library; }
 
         project->artifact = std::move(artifact);
     });

@@ -23,9 +23,10 @@ std::ostream& operator<<(std::ostream& os, artifact_type_t type)
     switch (type)
     {
         using enum artifact_type_t;
-        case executable:     return os << "executable";
+        case console:        return os << "console";
+        case window:         return os << "window";
         case shared_library: return os << "shared_library";
-        default:   return os << "invalid";
+        default:             return os << "invalid";
     }
 }
 

@@ -1,10 +1,24 @@
 # BLDR
 A Lua script based build system for C/C++.
 
+# Usage
+
+```
+Usage:
+bldr install add    : Install new bldr files
+     .       remove : Uninstall bldr files
+     .       .        -all : Delete *all* files
+     .       clean  : Clean broken bldr files
+     .       list   : List bldr files
+     env     clear  : Clear environemnts
+     make           : Build projects
+                      -clean   : Clean build
+                      -no-warn : Disable warnings
+                      -no-opt  : Disable optimizations
+```
+
 # Setup
 
-1) Clone and open this repo in a VS Command prompt
-3) Run: `setup.bat`
-4) Run: `build.bat`
-5) Run: `out\bootstrap\bldr.exe bldr`
-6) Profit
+1) Run: `setup.bat` (Builds dependencies)
+2) Run: `build.bat` (Builds and bootstraps bldr)
+3) Put `out/bldr.exe` on system PATH

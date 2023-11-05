@@ -11,14 +11,17 @@ void display_help(std::string_view message = {})
     }
 
     std::cout << R"(
-Usage: bldr install add        '     : Install new bldr files
-                    remove   --all   : Uninstall bldr files
-                    clean      '     : Clean broken bldr files
-                    list       '     : List bldr files
-            env     clear      '     : Clear environemnts
-            make      '    --clean   : Build projects
-                           --no-warn
-                           --no-opt
+Usage:
+bldr install add    : Install new bldr files
+     .       remove : Uninstall bldr files
+     .       .        -all : Delete *all* files
+     .       clean  : Clean broken bldr files
+     .       list   : List bldr files
+     env     clear  : Clear environemnts
+     make           : Build projects
+                      -clean   : Clean build
+                      -no-warn : Disable warnings
+                      -no-opt  : Disable optimizations
 )";
     std::exit(1);
 }
@@ -60,7 +63,7 @@ int main(int argc, char* argv[]) try
             }
 
         } else if (args[2] == "remove") {
-            if (args.size() > 3 && args[3] == "--all") {
+            if (args.size() > 3 && args[3] == "-all") {
                 installed.clear();
             } else {
                 for (uint32_t i = 3; i < args.size(); ++i ) {
@@ -107,9 +110,9 @@ int main(int argc, char* argv[]) try
         flags_t flags{};
         for (uint32_t i = 2; i < args.size(); ++i) {
             auto& arg = args[i];
-            if      (arg == "--clean")   flags = flags | flags_t::clean;
-            else if (arg == "--no-warn") flags = flags | flags_t::clean;
-            else if (arg == "--no-opt")  flags = flags | flags_t::clean;
+            if      (arg == "-clean")   flags = flags | flags_t::clean;
+            else if (arg == "-no-warn") flags = flags | flags_t::clean;
+            else if (arg == "-no-opt")  flags = flags | flags_t::clean;
             else projects.push_back(arg);
         }
 
@@ -123,7 +126,7 @@ int main(int argc, char* argv[]) try
             project_t build;
             generate_build(artifactory, *artifactory.projects.at(name), build);
             debug_project(build);
-            build_project(build);
+            build_project(build, flags);
         }
     } else {
         display_help(std::format("Unknown action: '{}'", args[1]));
