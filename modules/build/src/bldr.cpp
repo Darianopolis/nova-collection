@@ -1,4 +1,5 @@
 #include "bldr.hpp"
+#include "log.hpp"
 
 #include <fstream>
 #include <unordered_set>
@@ -7,11 +8,10 @@
 void display_help(std::string_view message = {})
 {
     if (!message.empty()) {
-        std::cout << "Error: " << message << '\n';
+        log_error("{}", message);
     }
 
-    std::cout << R"(
-Usage:
+    log_info(R"(Usage:
 bldr install add    : Install new bldr files
      .       remove : Uninstall bldr files
      .       .        -all : Delete *all* files
@@ -23,7 +23,7 @@ bldr install add    : Install new bldr files
                       -no-warn : Disable warnings
                       -no-opt  : Disable optimizations
      ide            : Configure intellisense for supported IDEs
-)";
+)");
     std::exit(1);
 }
 
@@ -57,10 +57,10 @@ int main(int argc, char* argv[]) try
             for (uint32_t i = 3; i < args.size(); ++i ){
                 auto path = fs::absolute(fs::path(args[i]));
                 if (!fs::exists(path)) {
-                    std::cout << "bldr : " << path.string() << " does not exist, skipping!\n";
+                    log_warn("{} does not exist, skipping!", path.string());
                     continue;
                 }
-                std::cout << "Adding: " << path.string() << '\n';
+                log_info("Adding: {}", path.string());
                 installed.insert(path);
             }
 
@@ -71,7 +71,7 @@ int main(int argc, char* argv[]) try
                 for (uint32_t i = 3; i < args.size(); ++i ) {
                     auto path = fs::absolute(fs::path(args[i]));
                     if (installed.contains(path)) {
-                        std::cout << "Removing: " << path.string() << '\n';
+                        log_info("Removing: {}", path.string());
                         installed.erase(path);
                     }
                 }
@@ -85,13 +85,14 @@ int main(int argc, char* argv[]) try
                 }
             }
             for (auto& del : to_delete) {
-                std::cout << "Removing: " << del.string() << '\n';
+                log_info("Removing: {}", del.string());
                 installed.erase(del);
             }
 
         } else if (args[2] == "list") {
+            log_info("Installed files:");
             for (auto& file : installed) {
-                std::cout << " - " << file.string() << '\n';
+                log(" - {}", file.string());
             }
         } else {
             display_help(std::format("Expected [add/remove/clean/list] after 'install', but got '{}'", args[2]));
@@ -117,21 +118,31 @@ int main(int argc, char* argv[]) try
             if      (arg == "-clean")   flags = flags | flags_t::clean;
             else if (arg == "-no-warn") flags = flags | flags_t::clean;
             else if (arg == "-no-opt")  flags = flags | flags_t::clean;
+            else if (arg == "-trace")   flags = flags | flags_t::trace;
             else projects.push_back(arg);
         }
 
         project_artifactory_t artifactory;
-        populate_artifactory(artifactory);
+        populate_artifactory(artifactory, flags);
+
+        std::vector<project_t*> to_build;
 
         for (auto& name : projects) {
             if (!artifactory.projects.contains(name)) {
-                std::cout << "Could not find project with name [" << name << "]\n";
+                log_warn("Could not find project with name [{}]", name);
             }
-            project_t build;
-            generate_build(artifactory, *artifactory.projects.at(name), build);
-            debug_project(build);
-            if      (args[1] == "make") build_project(build, flags);
-            else if (args[1] == "ide")  configure_ide(build, flags);
+            auto* build = new project_t();
+            generate_build(artifactory, *artifactory.projects.at(name), *build);
+            if (is_set(flags, flags_t::clean)) {
+                log_debug(" ---- Combined project ----");
+                debug_project(*build);
+            }
+            if      (args[1] == "make") to_build.push_back(build);
+            else if (args[1] == "ide")  configure_ide(*build, flags);
+        }
+
+        if (to_build.size()) {
+            build_project(to_build, flags);
         }
     } else {
         display_help(std::format("Unknown action: '{}'", args[1]));
@@ -139,9 +150,9 @@ int main(int argc, char* argv[]) try
 }
 catch (const std::exception& e)
 {
-    std::cout << "Errror: " << e.what() << '\n';
+    log_error("{}", e.what());
 }
 catch (...)
 {
-    std::cout << "Error\n";
+    log_error("Unknown error");
 }

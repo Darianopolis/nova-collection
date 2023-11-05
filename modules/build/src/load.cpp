@@ -1,4 +1,5 @@
 #include "bldr.hpp"
+#include <log.hpp>
 
 #include <sol/sol.hpp>
 
@@ -33,7 +34,7 @@ values_t get_values(sol::object obj)
     return values;
 }
 
-void populate_artifactory_from_file(project_artifactory_t& artifactory, const fs::path& file)
+void populate_artifactory_from_file(project_artifactory_t& artifactory, const fs::path& file, flags_t flags)
 {
     sol::state lua;
 
@@ -53,7 +54,7 @@ void populate_artifactory_from_file(project_artifactory_t& artifactory, const fs
     lua.set_function("Dynamic", []{});
 
     lua.set_function("Project", [&](std::string_view name) {
-        if (project) {
+        if (project && is_set(flags, flags_t::trace)) {
             debug_project(*project);
         }
 
@@ -92,6 +93,13 @@ void populate_artifactory_from_file(project_artifactory_t& artifactory, const fs
         }
     });
 
+    lua.set_function("LibPath", [&](sol::object obj) {
+        auto values = get_values(obj);
+        for (auto& value : values.values) {
+            project->lib_paths.push_back({ std::move(value), &project->dir });
+        }
+    });
+
     lua.set_function("Import", [&](sol::object obj) {
         auto values = get_values(obj);
         for (auto& value : values.values) {
@@ -107,6 +115,9 @@ void populate_artifactory_from_file(project_artifactory_t& artifactory, const fs
             auto scope = values.options.at("scope");
             if (scope == "build") {
                 import_scope = false;
+            }
+            if (scope == "import") {
+                build_scope = false;
             }
         }
         for (auto& define : values.values) {
@@ -146,17 +157,19 @@ void populate_artifactory_from_file(project_artifactory_t& artifactory, const fs
     sol::environment env(lua, sol::create, lua.globals());
     lua.script_file(file.string());
 
-    if (project) {
+    if (project && is_set(flags, flags_t::trace)) {
         debug_project(*project);
     }
 }
 
-void populate_artifactory(project_artifactory_t& artifactory)
+void populate_artifactory(project_artifactory_t& artifactory, flags_t flags)
 {
     for (auto& file : fs::directory_iterator(fs::current_path())) {
         if (file.path().string().ends_with("bldr.lua")) {
-            std::cout << "Loading bldr file: " << file.path().string() << '\n';
-            populate_artifactory_from_file(artifactory, file.path());
+            if (is_set(flags, flags_t::trace)) {
+                log_debug("Loading bldr file: {}", file.path().string());
+            }
+            populate_artifactory_from_file(artifactory, file.path(), flags);
         }
     }
 
@@ -172,8 +185,10 @@ void populate_artifactory(project_artifactory_t& artifactory)
     }
     for (auto& file : installed) {
         if (fs::exists(file)) {
-            std::cout << "Loading installed bldr file: " << file.string() << '\n';
-            populate_artifactory_from_file(artifactory, file);
+            if (is_set(flags, flags_t::trace)) {
+                log_info("Loading installed bldr file: {}", file.string());
+            }
+            populate_artifactory_from_file(artifactory, file, flags);
         }
     }
 }

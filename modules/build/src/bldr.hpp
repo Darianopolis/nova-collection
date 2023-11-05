@@ -6,6 +6,7 @@
 #include <unordered_map>
 #include <filesystem>
 #include <span>
+#include <chrono>
 
 using namespace std::literals;
 namespace fs = std::filesystem;
@@ -26,6 +27,7 @@ enum class flags_t : uint64_t
     clean  = 1 << 0,
     nowarn = 1 << 1,
     noopt  = 1 << 2,
+    trace  = 1 << 3,
 };
 
 inline
@@ -126,10 +128,10 @@ struct project_artifactory_t
     std::unordered_map<std::string_view, project_t*> projects;
 };
 
-void populate_artifactory(project_artifactory_t& artifactory);
+void populate_artifactory(project_artifactory_t& artifactory, flags_t flags);
 void generate_build(project_artifactory_t& artifactory,  project_t& project, project_t& output);
 void debug_project(project_t& project);
-void build_project(project_t& project, flags_t flags);
+void build_project(std::span<project_t*> projects, flags_t flags);
 void configure_ide(project_t& prjoect, flags_t flags);
 
 struct env_variable_t
@@ -154,4 +156,4 @@ struct program_exec_t
 
 };
 
-void execute_program(const program_exec_t& info);
+uint32_t execute_program(const program_exec_t& info, flags_t flags);

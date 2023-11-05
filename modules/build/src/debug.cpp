@@ -1,4 +1,5 @@
 #include "bldr.hpp"
+#include <log.hpp>
 
 std::ostream& operator<<(std::ostream& os, const path_t& path)
 {
@@ -37,8 +38,8 @@ std::ostream& operator<<(std::ostream& os, const artifact_t& artifact)
 
 void debug_project(project_t& project)
 {
-    std::cout << "Project: " << project.name << '\n';
-    std::cout << "  dir: " << project.dir << '\n';
+    log_debug("Project: {}", project.name);
+    log("  dir = {}", project.dir.to_fspath().string());
 
     auto print_all = [&](std::string_view name, auto& list) {
         if (list.empty()) return;

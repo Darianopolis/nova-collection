@@ -1,4 +1,5 @@
 #include "bldr.hpp"
+#include "log.hpp"
 
 #include <unordered_set>
 #include <filesystem>
@@ -65,11 +66,11 @@ std::string generate_env()
         &process);
 
     if (!res) {
-        std::cout << "Error creating environment: " << GetLastError() << '\n';
+        log_error("Error creating environment: {}", GetLastError());
     } else {
         CloseHandle(stdout_write_handle);
 
-        std::cout << "Generating MSVC environment...\n";
+        log_info("Generating MSVC environment...");
 
         std::string output;
         std::array<char, 4096> buffer{};
@@ -83,8 +84,6 @@ std::string generate_env()
 
         WaitForSingleObject(process.hProcess, INFINITE);
         CloseHandle(stdout_read_handle);
-
-        std::cout << "Creating environment:\n" << output << '\n';
 
         std::string env;
         std::string line;
@@ -105,6 +104,7 @@ std::string generate_env()
             out.write(env.data(), env.size());
         }
 
+        log_info("MSVC environment generated");
 
         return env;
     }
@@ -118,7 +118,7 @@ const std::string& get_build_environment()
     return env;
 }
 
-void execute_program(const program_exec_t& info)
+uint32_t execute_program(const program_exec_t& info, flags_t flags)
 {
     std::stringstream ss;
     auto cmd = [&](std::string_view value)
@@ -133,7 +133,9 @@ void execute_program(const program_exec_t& info)
     for (auto& arg : info.arguments) cmd(arg);
 
     std::string cmd_line = ss.str();
-    std::cout << "Running command:\n" << cmd_line << '\n';
+    if (is_set(flags, flags_t::trace)) {
+        log_debug("{}", cmd_line);
+    }
 
     STARTUPINFOA startup{};
     PROCESS_INFORMATION process{};
@@ -151,10 +153,15 @@ void execute_program(const program_exec_t& info)
         &process);
 
     if (!res) {
-        std::cout << "Error: " << GetLastError() << '\n';
+        log_error("Error: {}", GetLastError());
     } else {
         WaitForSingleObject(process.hProcess, INFINITE);
+        DWORD ec;
+        GetExitCodeProcess(process.hProcess, &ec);
+        return ec;
     }
+
+    return 1;
 }
 
 void generate_build(project_artifactory_t& artifactory,  project_t& project, project_t& output)
@@ -184,7 +191,7 @@ void generate_build(project_artifactory_t& artifactory,  project_t& project, pro
 
         for (auto& import : cur_project.imports) {
             if (!artifactory.projects.contains(import)) {
-                std::cout << "Could not find project with name '" << import << "'\n";
+                log_error("Could not find project with name '{}'", import);
                 std::exit(1);
             }
             self(*artifactory.projects.at(import));
@@ -242,22 +249,48 @@ std::string to_string(const path_t& path, char separator = '/')
     return fspath;
 }
 
-void build_project(project_t& project, flags_t flags)
+void build_project(std::span<project_t*> projects, flags_t flags)
 {
+    auto start = std::chrono::steady_clock::now();
+
     auto artifacts_dir = s_paths.artifacts;
-    auto project_artifacts = artifacts_dir / project.name;
     if (is_set(flags, flags_t::clean)) {
-        std::cout << "Cleaning project artifacts\n";
-        fs::remove_all(project_artifacts);
+        log_info("Cleaning project artifacts");
+        for (auto& project : projects) {
+            fs::remove_all(artifacts_dir / project->name);
+        }
     }
-    fs::create_directories(project_artifacts);
+
+    for (auto& project : projects) {
+        fs::create_directories(artifacts_dir / project->name);
+    }
+
+    struct compile_task_t
+    {
+        project_t* project;
+        uint32_t source_idx;
+    };
+
+    std::vector<compile_task_t> compile_tasks;
+
+    for (auto* project : projects) {
+        for (uint32_t i = 0; i < project->sources.size(); ++i) {
+            compile_tasks.emplace_back(project, i);
+        }
+    }
+
+    std::atomic_uint32_t errors = 0;
+
+    log_info("Compiling {} files...", compile_tasks.size());
 
 #pragma omp parallel for
-    for (int32_t i = 0; i < int32_t(project.sources.size()); ++i) {
-        auto& source = project.sources[i];
+    for (int32_t i = 0; i < int32_t(compile_tasks.size()); ++i) {
+        auto task = compile_tasks[i];
+        auto& project = *task.project;
+        auto& source = project.sources[task.source_idx];
 
         program_exec_t info;
-        info.working_directory = {project_artifacts.string()};
+        info.working_directory = {(artifacts_dir / project.name).string()};
 
         auto arg = [&](auto& exec_info, auto&&... args)
         {
@@ -305,96 +338,122 @@ void build_project(project_t& project, flags_t flags)
         for (auto& include : project.force_includes) arg(info, "/FI", include.to_fspath().string());
         for (auto& define  : project.build_defines)  arg(info, "/D", to_string(define));
 
-        execute_program(info);
+        auto res = execute_program(info, flags);
+        if (res != 0) {
+            errors++;
+        }
     }
 
-    if (project.artifact) {
-        auto& artifact = project.artifact.value();
-        auto path = artifact.path.to_fspath();
+    if (errors == 0) {
+        for (int32_t i = 0; i < projects.size(); ++i) {
+            auto& project = *projects[i];
+            if (!project.artifact) continue;
 
-        program_exec_t info;
-        info.working_directory = {artifacts_dir.string()};
+            auto& artifact = project.artifact.value();
+            auto path = artifact.path.to_fspath();
 
-        auto arg = [&](auto& exec_info, auto&&... args)
-        {
-            std::stringstream ss;
-            (ss << ... << args);
-            exec_info.arguments.push_back(ss.str());
-        };
+            log_info("Generating [{}]", path.filename().string());
 
-        arg(info, "cmd");
-        arg(info, "/c");
-        arg(info, "link");
+            program_exec_t info;
+            info.working_directory = {artifacts_dir.string()};
 
-        arg(info, "/nologo");
-        arg(info, "/IGNORE:4099");    // PDB 'filename' was not found with 'object/library' or at 'path'; linking object as if no debug info
-        arg(info, "/INCREMENTAL");    // TODO: Add option for full optimizing link
-        arg(info, "/DYNAMICBASE:NO"); // Disable address space layout randomization.
+            auto arg = [&](auto& exec_info, auto&&... args)
+            {
+                std::stringstream ss;
+                (ss << ... << args);
+                exec_info.arguments.push_back(ss.str());
+            };
 
-        arg(info, "/NODEFAULTLIB:msvcrtd.lib");
-        arg(info, "/NODEFAULTLIB:libcmt.lib");
-        arg(info, "/NODEFAULTLIB:libcmtd.lib");
+            arg(info, "cmd");
+            arg(info, "/c");
+            arg(info, "link");
 
-        // Target
+            arg(info, "/nologo");
+            arg(info, "/IGNORE:4099");    // PDB 'filename' was not found with 'object/library' or at 'path'; linking object as if no debug info
+            arg(info, "/INCREMENTAL");    // TODO: Add option for full optimizing link
+            arg(info, "/DYNAMICBASE:NO"); // Disable address space layout randomization.
 
-        if (artifact.type == artifact_type_t::console || artifact.type == artifact_type_t::window) {
-            arg(info, "/SUBSYSTEM:", artifact.type == artifact_type_t::console ? "CONSOLE" : "WINDOWS");
-            path.replace_extension(".exe");
-        } else if (artifact.type == artifact_type_t::shared_library) {
-            arg(info, "/DLL");
-            path.replace_extension(".dll");
-        }
+            arg(info, "/NODEFAULTLIB:msvcrtd.lib");
+            arg(info, "/NODEFAULTLIB:libcmt.lib");
+            arg(info, "/NODEFAULTLIB:libcmtd.lib");
 
-        auto build_path = project_artifacts / path.filename();
-        arg(info, "/OUT:", build_path.string());
+            // Target
 
-        // Library paths
+            if (artifact.type == artifact_type_t::console || artifact.type == artifact_type_t::window) {
+                arg(info, "/SUBSYSTEM:", artifact.type == artifact_type_t::console ? "CONSOLE" : "WINDOWS");
+                path.replace_extension(".exe");
+            } else if (artifact.type == artifact_type_t::shared_library) {
+                arg(info, "/DLL");
+                path.replace_extension(".dll");
+            }
 
-        for (auto& lib_path : project.lib_paths) {
-            arg(info, "/LIBPATH:", lib_path.to_fspath().string());
-        }
+            auto build_path = (artifacts_dir / project.name) / path.filename();
+            arg(info, "/OUT:", build_path.string());
 
-        // Additional Links
+            // Library paths
 
-        for (auto& link : project.links) {
-            arg(info, link.to_fspath().string());
-        }
+            for (auto& lib_path : project.lib_paths) {
+                arg(info, "/LIBPATH:", lib_path.to_fspath().string());
+            }
 
-        // Import objects
+            // Additional Links
 
-        for (auto& import : project.imports) {
-            auto dir = artifacts_dir / import;
-            if (!fs::exists(dir)) continue;
-            auto iter = fs::directory_iterator(dir);
-            for (auto& file : iter) {
-                if (file.path().extension() == ".obj") {
-                    auto relative = fs::relative(file, artifacts_dir).string();
-                    arg(info, relative);
+            for (auto& link : project.links) {
+                arg(info, link.to_fspath().string());
+            }
+
+            // Import objects
+
+            for (auto& import : project.imports) {
+                auto dir = artifacts_dir / import;
+                if (!fs::exists(dir)) continue;
+                auto iter = fs::directory_iterator(dir);
+                for (auto& file : iter) {
+                    if (file.path().extension() == ".obj") {
+                        auto relative = fs::relative(file, artifacts_dir).string();
+                        arg(info, relative);
+                    }
                 }
             }
+
+            // Add default windows libraries
+
+            arg(info, "user32.lib");
+            arg(info, "gdi32.lib");
+            arg(info, "shell32.lib");
+            arg(info, "Winmm.lib");
+            arg(info, "Advapi32.lib");
+            arg(info, "Comdlg32.lib");
+            arg(info, "comsuppw.lib");
+            arg(info, "onecore.lib");
+
+            // Link
+
+            auto res = execute_program(info, flags);
+            if (res == 0) {
+
+                // Copy output
+                // TODO: Copy imported shared libraries
+
+                fs::create_directories(path.parent_path());
+                fs::remove(path);
+                fs::copy(build_path, path);
+            } else {
+                errors++;
+            }
         }
+    }
 
-        // Add default windows libraries
+    auto end = std::chrono::steady_clock::now();
 
-        arg(info, "user32.lib");
-        arg(info, "gdi32.lib");
-        arg(info, "shell32.lib");
-        arg(info, "Winmm.lib");
-        arg(info, "Advapi32.lib");
-        arg(info, "Comdlg32.lib");
-        arg(info, "comsuppw.lib");
-        arg(info, "onecore.lib");
-
-        // Link
-
-        execute_program(info);
-
-        // Copy output
-        // TODO: Copy imported shared libraries
-
-        fs::create_directories(path.parent_path());
-        fs::remove(path);
-        fs::copy(build_path, path);
+    if (errors == 0) {
+        log_info("------------------------------------------------------------------------");
+        log_info("\u001B[92mBuild Success\u001B[0m | Total time: {}", duration_to_string(end - start));
+        log_info("------------------------------------------------------------------------");
+    } else {
+        log_error("------------------------------------------------------------------------");
+        log_error("\u001B[91mBuild Failure!\u001B[0m | Errors: {}", errors.load());
+        log_error("------------------------------------------------------------------------");
     }
 }
 
@@ -438,6 +497,7 @@ void configure_ide(project_t& project, flags_t flags)
     };
 
     std::string defines;
+    append_to(defines, "WIN32");
     append_to(defines, "UNICODE");
     append_to(defines, "_UNICODE");
     for (auto& define : project.build_defines) append_to(defines, to_string(define));
