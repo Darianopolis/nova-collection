@@ -118,6 +118,45 @@ const std::string& get_build_environment()
     return env;
 }
 
+void execute_program(const program_exec_t& info)
+{
+    std::stringstream ss;
+    auto cmd = [&](std::string_view value)
+    {
+        if (value.contains(' ')) {
+            ss << '"' << value << "\" ";
+        } else {
+            ss << value << ' ';
+        }
+    };
+
+    for (auto& arg : info.arguments) cmd(arg);
+
+    std::string cmd_line = ss.str();
+    std::cout << "Running command:\n" << cmd_line << '\n';
+
+    STARTUPINFOA startup{};
+    PROCESS_INFORMATION process{};
+
+    auto res = CreateProcessA(
+        nullptr,
+        cmd_line.data(),
+        nullptr,
+        nullptr,
+        false,
+        NORMAL_PRIORITY_CLASS,
+        (void*)get_build_environment().c_str(),
+        info.working_directory.to_fspath().string().c_str(),
+        &startup,
+        &process);
+
+    if (!res) {
+        std::cout << "Error: " << GetLastError() << '\n';
+    } else {
+        WaitForSingleObject(process.hProcess, INFINITE);
+    }
+}
+
 void generate_build(project_artifactory_t& artifactory,  project_t& project, project_t& output)
 {
     std::unordered_set<std::string_view> visited;
@@ -183,6 +222,22 @@ void generate_build(project_artifactory_t& artifactory,  project_t& project, pro
     output.artifact = project.artifact;
 }
 
+std::string to_string(const define_t& def)
+{
+    return def.value.empty() ? def.key : std::format("{}={}", def.key, def.value);
+};
+
+std::string to_string(const path_t& path, char separator = '/')
+{
+    auto fspath = path.to_fspath().string();
+    for (char& c : fspath) {
+        if (c == '\\' || c == '/') {
+            c = separator;
+        }
+    }
+    return fspath;
+}
+
 void build_project(project_t& project, flags_t flags)
 {
     auto artifacts_dir = s_paths.artifacts;
@@ -241,10 +296,7 @@ void build_project(project_t& project, flags_t flags)
 
         for (auto& include : project.includes)       arg(info, "/I",  include.to_fspath().string());
         for (auto& include : project.force_includes) arg(info, "/FI", include.to_fspath().string());
-        for (auto& define  : project.build_defines) {
-            if (define.value.empty()) arg(info, "/D", define.key);
-            else                      arg(info, "/D", define.key, "=", define.value);
-        }
+        for (auto& define  : project.build_defines)  arg(info, "/D", to_string(define));
 
         execute_program(info);
     }
@@ -339,41 +391,65 @@ void build_project(project_t& project, flags_t flags)
     }
 }
 
-void execute_program(const program_exec_t& info)
+void configure_ide(project_t& project, flags_t flags)
 {
-    std::stringstream ss;
-    auto cmd = [&](std::string_view value)
+    auto vscode_layout = R"(
+{{
+    "configurations": [
+        {{
+            "name": "MSVC",
+            "compilerArgs": [
+                "/Zc:preprocessor",
+                "/std:c++latest",
+                "/Zc:__cplusplus"
+            ],
+            "defines": [{0}
+            ],
+            "forcedInclude": [{1}
+            ],
+            "includePath": [{2}
+            ],
+            "cStandard": "c23",
+            "cppStandard": "c++23",
+            "intelliSenseMode": "windows-msvc-x64",
+            "compilerPath": "{3}"
+        }}
+    ],
+    "version": 4
+}}
+    )"sv;
+
+    auto append_to = [&](std::string& to, const auto& str)
     {
-        if (value.contains(' ')) {
-            ss << '"' << value << "\" ";
-        } else {
-            ss << value << ' ';
-        }
+        std::stringstream ss;
+        if (to.size()) ss << ",";
+        ss << "\n                ";
+        ss << '"' << str << '"';
+        to.append(ss.str());
     };
 
-    for (auto& arg : info.arguments) cmd(arg);
+    std::string defines;
+    for (auto& define : project.build_defines) append_to(defines, to_string(define));
 
-    std::string cmd_line = ss.str();
-    std::cout << "Running command:\n" << cmd_line << '\n';
+    std::string force_includes;
+    for (auto& include : project.force_includes) append_to(force_includes, to_string(include));
 
-    STARTUPINFOA startup{};
-    PROCESS_INFORMATION process{};
+    std::string includes;
+    for (auto& include : project.includes) append_to(includes, to_string(include));
 
-    auto res = CreateProcessA(
-        nullptr,
-        cmd_line.data(),
-        nullptr,
-        nullptr,
-        false,
-        NORMAL_PRIORITY_CLASS,
-        (void*)get_build_environment().c_str(),
-        info.working_directory.to_fspath().string().c_str(),
-        &startup,
-        &process);
+    std::string compiler_path;
+    {
+        const auto& env = get_build_environment();
+        auto tools_ver = env.find("VCToolsVersion=");
+        if (tools_ver != std::string::npos) {
+            compiler_path = std::format(
+                    "C:/Program Files/Microsoft Visual Studio/2022/Community/VC/Tools/MSVC/{}/bin/Hostx64/x64/cl.exe",
+                    env.c_str() + tools_ver + 15);
+        }
+    }
 
-    if (!res) {
-        std::cout << "Error: " << GetLastError() << '\n';
-    } else {
-        WaitForSingleObject(process.hProcess, INFINITE);
+    {
+        std::ofstream vscode_out(fs::path(".vscode/c_cpp_properties.json"), std::ios::binary);
+        vscode_out << std::vformat(vscode_layout, std::make_format_args(defines, force_includes, includes, compiler_path));
     }
 }

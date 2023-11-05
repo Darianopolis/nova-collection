@@ -22,6 +22,7 @@ bldr install add    : Install new bldr files
                       -clean   : Clean build
                       -no-warn : Disable warnings
                       -no-opt  : Disable optimizations
+     ide            : Configure intellisense for supported IDEs
 )";
     std::exit(1);
 }
@@ -106,7 +107,7 @@ int main(int argc, char* argv[]) try
 
         fs::remove_all(s_paths.environments);
 
-    } else if (args[1] == "make") {
+    } else if (args[1] == "make" || args[1] == "ide") {
         std::vector<std::string_view> projects;
         flags_t flags{};
         for (uint32_t i = 2; i < args.size(); ++i) {
@@ -127,7 +128,8 @@ int main(int argc, char* argv[]) try
             project_t build;
             generate_build(artifactory, *artifactory.projects.at(name), build);
             debug_project(build);
-            build_project(build, flags);
+            if      (args[1] == "make") build_project(build, flags);
+            else if (args[1] == "ide")  configure_ide(build, flags);
         }
     } else {
         display_help(std::format("Unknown action: '{}'", args[1]));

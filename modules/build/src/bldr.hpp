@@ -130,6 +130,7 @@ void populate_artifactory(project_artifactory_t& artifactory);
 void generate_build(project_artifactory_t& artifactory,  project_t& project, project_t& output);
 void debug_project(project_t& project);
 void build_project(project_t& project, flags_t flags);
+void configure_ide(project_t& prjoect, flags_t flags);
 
 struct env_variable_t
 {
