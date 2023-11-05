@@ -93,6 +93,8 @@ int main(int argc, char* argv[]) try
             for (auto& file : installed) {
                 std::cout << " - " << file.string() << '\n';
             }
+        } else {
+            display_help(std::format("Expected [add/remove/clean/list] after 'install', but got '{}'", args[2]));
         }
 
         {

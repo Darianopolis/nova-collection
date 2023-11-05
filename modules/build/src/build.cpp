@@ -183,6 +183,10 @@ void generate_build(project_artifactory_t& artifactory,  project_t& project, pro
                 : cur_project.defines);
 
         for (auto& import : cur_project.imports) {
+            if (!artifactory.projects.contains(import)) {
+                std::cout << "Could not find project with name '" << import << "'\n";
+                std::exit(1);
+            }
             self(*artifactory.projects.at(import));
         }
     };
@@ -246,13 +250,13 @@ void build_project(project_t& project, flags_t flags)
         std::cout << "Cleaning project artifacts\n";
         fs::remove_all(project_artifacts);
     }
+    fs::create_directories(project_artifacts);
 
 #pragma omp parallel for
     for (int32_t i = 0; i < int32_t(project.sources.size()); ++i) {
         auto& source = project.sources[i];
 
         program_exec_t info;
-        fs::create_directories(project_artifacts);
         info.working_directory = {project_artifacts.string()};
 
         auto arg = [&](auto& exec_info, auto&&... args)
@@ -278,6 +282,9 @@ void build_project(project_t& project, flags_t flags)
         arg(info, "/utf-8");           // Set source and execution character sets
         arg(info, "/O2");              // Use maximum options
         arg(info, "/Ob3");             // Use maximum inlining
+
+        arg(info, "/DUNICODE");  // Specify UNICODE for win32
+        arg(info, "/D_UNICODE");
 
         if (source.type == source_type_t::c) {
             arg(info, "/std:c17");
@@ -393,6 +400,8 @@ void build_project(project_t& project, flags_t flags)
 
 void configure_ide(project_t& project, flags_t flags)
 {
+    (void)flags;
+
     auto vscode_layout = R"(
 {{
     "configurations": [
@@ -429,6 +438,8 @@ void configure_ide(project_t& project, flags_t flags)
     };
 
     std::string defines;
+    append_to(defines, "UNICODE");
+    append_to(defines, "_UNICODE");
     for (auto& define : project.build_defines) append_to(defines, to_string(define));
 
     std::string force_includes;
@@ -449,6 +460,7 @@ void configure_ide(project_t& project, flags_t flags)
     }
 
     {
+        fs::create_directories(fs::path(".vscode"));
         std::ofstream vscode_out(fs::path(".vscode/c_cpp_properties.json"), std::ios::binary);
         vscode_out << std::vformat(vscode_layout, std::make_format_args(defines, force_includes, includes, compiler_path));
     }

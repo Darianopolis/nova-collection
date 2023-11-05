@@ -2,6 +2,9 @@
 
 #include <sol/sol.hpp>
 
+#include <unordered_set>
+#include <fstream>
+
 struct values_t
 {
     std::vector<std::string> values;
@@ -64,7 +67,7 @@ void populate_artifactory_from_file(project_artifactory_t& artifactory, const fs
     });
 
     lua.set_function("Dir", [&](std::string_view name) {
-        project->dir = {fs::absolute(name).string()};
+        project->dir = {fs::absolute(default_dir / name).string()};
     });
 
     lua.set_function("Compile", [&](sol::object obj) {
@@ -154,6 +157,23 @@ void populate_artifactory(project_artifactory_t& artifactory)
         if (file.path().string().ends_with("bldr.lua")) {
             std::cout << "Loading bldr file: " << file.path().string() << '\n';
             populate_artifactory_from_file(artifactory, file.path());
+        }
+    }
+
+    std::unordered_set<fs::path> installed;
+    {
+        std::ifstream fs(s_paths.installed, std::ios::binary);
+        if (fs.is_open()) {
+            std::string line;
+            while (std::getline(fs, line)) {
+                installed.insert(line);
+            }
+        }
+    }
+    for (auto& file : installed) {
+        if (fs::exists(file)) {
+            std::cout << "Loading installed bldr file: " << file.string() << '\n';
+            populate_artifactory_from_file(artifactory, file);
         }
     }
 }
