@@ -6,6 +6,7 @@
 #include <array>
 #include <fstream>
 #include <algorithm>
+#include <regex>
 
 #define NOMINMAX
 #define WIN32_LEAN_AND_MEAN
@@ -250,6 +251,75 @@ std::string to_string(const path_t& path, char separator = '/')
     return fspath;
 }
 
+// TODO: Prepass to build dependency tree
+bool is_dirty(const project_t& project, const fs::path& path, fs::file_time_type last)
+{
+    std::unordered_set<fs::path> visited;
+    std::vector<fs::path> includes;
+    for (auto& include : project.includes) {
+        includes.push_back(include.to_fspath());
+    }
+
+    // ^ \s* # \s* include \s+ ("|<) ([^">]+)
+    std::regex regex(R"(^\s*#\s*include\s+("|<)([^">]+))");
+
+    auto check = [&](this auto&& self, fs::path cur)
+    {
+        cur = fs::canonical(cur);
+
+        if (visited.contains(cur)) {
+            return false;
+        }
+
+        auto cur_last_write = fs::last_write_time(cur);
+        if (cur_last_write > last) {
+            return true;
+        }
+
+        visited.insert(cur);
+
+        std::string str;
+        std::ifstream in(cur, std::ios::binary | std::ios::ate);
+        str.resize(in.tellg());
+        in.seekg(0);
+        in.read(str.data(), str.size());
+
+        auto beg = std::sregex_iterator(str.begin(), str.end(), regex);
+        auto end = std::sregex_iterator();
+        for (auto i = beg; i != end; ++i) {
+            auto& match = *i;
+            auto token = match.str(1);
+            auto file = match.str(2);
+
+            bool check_local = token == "\"";
+
+            if (check_local) {
+                auto new_path = cur.parent_path() / fs::path(file);
+                if (fs::exists(new_path)) {
+                    if (self(std::move(new_path))) {
+                        return true;
+                    }
+                    continue;
+                }
+            }
+
+            for (auto& include : includes) {
+                auto new_path = include / file;
+                if (fs::exists(new_path)) {
+                    if (self(std::move(new_path))) {
+                        return true;
+                    }
+                    break;
+                }
+            }
+        }
+
+        return false;
+    };
+
+    return check(path);
+}
+
 void build_project(std::span<project_t*> projects, flags_t flags)
 {
     auto start = std::chrono::steady_clock::now();
@@ -289,6 +359,18 @@ void build_project(std::span<project_t*> projects, flags_t flags)
         auto task = compile_tasks[i];
         auto& project = *task.project;
         auto& source = project.sources[task.source_idx];
+
+        {
+            auto target_obj = source.file.to_fspath();
+            target_obj.replace_extension(".obj");
+            target_obj = artifacts_dir / project.name / target_obj.filename();
+            if (fs::exists(target_obj)) {
+                auto last_modified = fs::last_write_time(target_obj);
+                if (!is_dirty(project, source.file.to_fspath(), last_modified)) {
+                    continue;
+                }
+            }
+        }
 
         program_exec_t info;
         info.working_directory = {(artifacts_dir / project.name).string()};
@@ -537,8 +619,8 @@ void configure_ide(project_t& project, flags_t flags)
         auto tools_ver = env.find("VCToolsVersion=");
         if (tools_ver != std::string::npos) {
             compiler_path = std::format(
-                    "C:/Program Files/Microsoft Visual Studio/2022/Community/VC/Tools/MSVC/{}/bin/Hostx64/x64/cl.exe",
-                    env.c_str() + tools_ver + 15);
+                "C:/Program Files/Microsoft Visual Studio/2022/Community/VC/Tools/MSVC/{}/bin/Hostx64/x64/cl.exe",
+                env.c_str() + tools_ver + 15);
         }
     }
 

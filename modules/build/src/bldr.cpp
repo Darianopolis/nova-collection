@@ -116,8 +116,8 @@ int main(int argc, char* argv[]) try
         for (uint32_t i = 2; i < args.size(); ++i) {
             auto& arg = args[i];
             if      (arg == "-clean")   flags = flags | flags_t::clean;
-            else if (arg == "-no-warn") flags = flags | flags_t::clean;
-            else if (arg == "-no-opt")  flags = flags | flags_t::clean;
+            else if (arg == "-no-warn") flags = flags | flags_t::nowarn;
+            else if (arg == "-no-opt")  flags = flags | flags_t::noopt;
             else if (arg == "-trace")   flags = flags | flags_t::trace;
             else projects.push_back(arg);
         }
@@ -133,7 +133,7 @@ int main(int argc, char* argv[]) try
             }
             auto* build = new project_t();
             generate_build(artifactory, *artifactory.projects.at(name), *build);
-            if (is_set(flags, flags_t::clean)) {
+            if (is_set(flags, flags_t::trace)) {
                 log_debug(" ---- Combined project ----");
                 debug_project(*build);
             }
