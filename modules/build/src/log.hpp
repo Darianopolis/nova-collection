@@ -2,6 +2,7 @@
 
 #include <format>
 #include <syncstream>
+#include <iostream>
 
 template<class... Args>
 void log(const std::format_string<Args...> fmt, Args&&... args)

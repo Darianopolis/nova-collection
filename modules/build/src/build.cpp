@@ -13,8 +13,6 @@
 #include "Windows.h"
 #include "shellapi.h"
 
-namespace fs = std::filesystem;
-
 std::string generate_env()
 {
     auto env_file = s_paths.environments / "msvc";
@@ -149,7 +147,7 @@ uint32_t execute_program(const program_exec_t& info, flags_t flags)
         false,
         NORMAL_PRIORITY_CLASS,
         (void*)get_build_environment().c_str(),
-        info.working_directory.to_fspath().string().c_str(),
+        info.working_directory.string().c_str(),
         &startup,
         &process);
 
@@ -220,15 +218,7 @@ void generate_build(project_artifactory_t& artifactory,  project_t& project, pro
             }
         };
 
-        if (path.path.ends_with("/**")) {
-            auto iter = fs::recursive_directory_iterator(path.to_fspath(3));
-            for (auto& file : iter) insert_source(file.path());
-        } else if (path.path.ends_with("/*")) {
-            auto iter = fs::directory_iterator(path.to_fspath(2));
-            for (auto& file : iter) insert_source(file.path());
-        } else {
-            insert_source(path.to_fspath());
-        }
+        for (auto& file : resolve_glob(path)) insert_source(file);
     }
 
     output.name = project.name;
@@ -240,9 +230,9 @@ std::string to_string(const define_t& def)
     return def.value.empty() ? def.key : std::format("{}={}", def.key, def.value);
 };
 
-std::string to_string(const path_t& path, char separator = '/')
+std::string to_string(const fs::path& path, char separator = '/')
 {
-    auto fspath = path.to_fspath().string();
+    auto fspath = path.string();
     for (char& c : fspath) {
         if (c == '\\' || c == '/') {
             c = separator;
@@ -255,10 +245,6 @@ std::string to_string(const path_t& path, char separator = '/')
 bool is_dirty(const project_t& project, const fs::path& path, fs::file_time_type last)
 {
     std::unordered_set<fs::path> visited;
-    std::vector<fs::path> includes;
-    for (auto& include : project.includes) {
-        includes.push_back(include.to_fspath());
-    }
 
     // ^ \s* # \s* include \s+ ("|<) ([^">]+)
     std::regex regex(R"(^\s*#\s*include\s+("|<)([^">]+))");
@@ -303,7 +289,7 @@ bool is_dirty(const project_t& project, const fs::path& path, fs::file_time_type
                 }
             }
 
-            for (auto& include : includes) {
+            for (auto& include : project.includes) {
                 auto new_path = include / file;
                 if (fs::exists(new_path)) {
                     if (self(std::move(new_path))) {
@@ -361,12 +347,12 @@ void build_project(std::span<project_t*> projects, flags_t flags)
         auto& source = project.sources[task.source_idx];
 
         {
-            auto target_obj = source.file.to_fspath();
+            auto target_obj = source.file;
             target_obj.replace_extension(".obj");
             target_obj = artifacts_dir / project.name / target_obj.filename();
             if (fs::exists(target_obj)) {
                 auto last_modified = fs::last_write_time(target_obj);
-                if (!is_dirty(project, source.file.to_fspath(), last_modified)) {
+                if (!is_dirty(project, source.file, last_modified)) {
                     continue;
                 }
             }
@@ -404,7 +390,7 @@ void build_project(std::span<project_t*> projects, flags_t flags)
 
         if (source.type == source_type_t::c) {
             arg(info, "/std:c17");
-            arg(info, "/Tc", source.file.to_fspath().string());
+            arg(info, "/Tc", source.file.string());
         } else {
             arg(info, "/EHsc");           // Full exception unwinding
             arg(info, "/openmp:llvm");    // LLVM openmp (enables unsigned loop counters)
@@ -414,11 +400,11 @@ void build_project(std::span<project_t*> projects, flags_t flags)
                 arg(info, "/experimental:module"); // Enable modules
                 arg(info, "/translateInclude");    // Enable header include -> module import translation
             }
-            arg(info, "/Tp", source.file.to_fspath().string());
+            arg(info, "/Tp", source.file.string());
         }
 
-        for (auto& include : project.includes)       arg(info, "/I",  include.to_fspath().string());
-        for (auto& include : project.force_includes) arg(info, "/FI", include.to_fspath().string());
+        for (auto& include : project.includes)       arg(info, "/I",  include.string());
+        for (auto& include : project.force_includes) arg(info, "/FI", include.string());
         for (auto& define  : project.build_defines)  arg(info, "/D", to_string(define));
 
         auto res = execute_program(info, flags);
@@ -433,7 +419,7 @@ void build_project(std::span<project_t*> projects, flags_t flags)
             if (!project.artifact) continue;
 
             auto& artifact = project.artifact.value();
-            auto path = artifact.path.to_fspath();
+            auto path = artifact.path;
 
             log_info("Generating [{}]", path.filename().string());
 
@@ -476,13 +462,13 @@ void build_project(std::span<project_t*> projects, flags_t flags)
             // Library paths
 
             for (auto& lib_path : project.lib_paths) {
-                arg(info, "/LIBPATH:", lib_path.to_fspath().string());
+                arg(info, "/LIBPATH:", lib_path.string());
             }
 
             // Additional Links
 
             for (auto& link : project.links) {
-                arg(info, link.to_fspath().string());
+                arg(info, link.string());
             }
 
             // Import objects
@@ -525,21 +511,11 @@ void build_project(std::span<project_t*> projects, flags_t flags)
                 fs::remove(path);
                 fs::copy(build_path, path);
 
-                for (auto& shared_lib : project.shared_libs) {
-                    auto slib_path = shared_lib.to_fspath();
-                    // TODO: Implement generic glob expansion
-                    if (slib_path.filename() == "*.dll") {
-                        for (auto& e : fs::directory_iterator(slib_path.parent_path())) {
-                            slib_path = e.path();
-                            if (slib_path.extension() != ".dll") continue;
-                            auto slib_target = path.parent_path() / slib_path.filename();
-                            fs::remove(slib_target);
-                            fs::copy(slib_path, slib_target);
-                        }
-                    } else {
-                        auto slib_target = path.parent_path() / slib_path.filename();
+                for (auto& shared_lib_glob : project.shared_libs) {
+                    for (auto& shared_lib : resolve_glob(shared_lib_glob)) {
+                        auto slib_target = path.parent_path() / shared_lib.filename();
                         fs::remove(slib_target);
-                        fs::copy(slib_path, slib_target);
+                        fs::copy(shared_lib, slib_target);
                     }
                 }
             } catch (const std::exception& e) {

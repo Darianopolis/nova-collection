@@ -42,7 +42,7 @@ int main(int argc, char* argv[]) try
     if (args[1] == "install") {
         if (args.size() < 3) display_help("Expected argument after install");
 
-        std::unordered_set<std::filesystem::path> installed;
+        std::unordered_set<fs::path> installed;
         {
             std::ifstream fs(s_paths.installed, std::ios::binary);
             if (fs.is_open()) {
@@ -78,7 +78,7 @@ int main(int argc, char* argv[]) try
             }
 
         } else if (args[2] == "clean") {
-            std::vector<std::filesystem::path> to_delete;
+            std::vector<fs::path> to_delete;
             for (auto& file : installed) {
                 if (!fs::exists(file)) {
                     to_delete.push_back(file);

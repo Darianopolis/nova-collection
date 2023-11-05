@@ -24,7 +24,8 @@ cd build\out
         ..\..\src\build.cpp ^
         ..\..\src\debug.cpp ^
         ..\..\src\load.cpp ^
-        ..\..\src\bldr.cpp
+        ..\..\src\bldr.cpp ^
+        ..\..\src\files.cpp
 
     echo Linking...
 

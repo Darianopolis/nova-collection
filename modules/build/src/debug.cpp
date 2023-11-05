@@ -1,12 +1,17 @@
 #include "bldr.hpp"
 #include <log.hpp>
 
-std::ostream& operator<<(std::ostream& os, const path_t& path)
+std::ostream& operator<<(std::ostream& os, source_type_t type)
 {
-    if (path.parent) {
-        os << *path.parent << "/";
+    switch (type)
+    {
+        using enum source_type_t;
+        case automatic: return os << "automatic";
+        case cppm:      return os << "cppm";
+        case cpp:       return os << "cpp";
+        case c:         return os << "c";
+        default:        return os << "invalid";
     }
-    return os << path.path;
 }
 
 std::ostream& operator<<(std::ostream& os, const define_t& define)
@@ -39,7 +44,7 @@ std::ostream& operator<<(std::ostream& os, const artifact_t& artifact)
 void debug_project(project_t& project)
 {
     log_debug("Project: {}", project.name);
-    log("  dir = {}", project.dir.to_fspath().string());
+    log("  dir = {}", project.dir.string());
 
     auto print_all = [&](std::string_view name, auto& list) {
         if (list.empty()) return;

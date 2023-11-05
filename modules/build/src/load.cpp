@@ -59,7 +59,7 @@ void populate_artifactory_from_file(project_artifactory_t& artifactory, const fs
 
         project = new project_t{};
         project->name = std::string(name);
-        project->dir = path_t(default_dir.string());
+        project->dir = default_dir;
 
         artifactory.projects.insert({ project->name, project });
 
@@ -81,21 +81,21 @@ void populate_artifactory_from_file(project_artifactory_t& artifactory, const fs
         }
 
         for (auto& value : values.values) {
-            project->sources.push_back({ {std::move(value), &project->dir}, type });
+            project->sources.push_back({ project->dir / value, type });
         }
     });
 
     lua.set_function("Include", [&](sol::object obj) {
         auto values = get_values(obj);
         for (auto& value : values.values) {
-            project->includes.push_back({ std::move(value), &project->dir });
+            project->includes.push_back(project->dir / value);
         }
     });
 
     lua.set_function("LibPath", [&](sol::object obj) {
         auto values = get_values(obj);
         for (auto& value : values.values) {
-            project->lib_paths.push_back({ std::move(value), &project->dir });
+            project->lib_paths.push_back(project->dir / value);
         }
     });
 
@@ -137,7 +137,7 @@ void populate_artifactory_from_file(project_artifactory_t& artifactory, const fs
     lua.set_function("Artifact", [&](sol::object obj) {
         auto values = get_values(obj);
         artifact_t artifact{};
-        artifact.path = {values.values.front(), &project->dir};
+        artifact.path = project->dir / values.values.front();
         auto& type = values.options.at("type");
         if      (type == "Console") { artifact.type = artifact_type_t::console;        }
         if      (type == "Window")  { artifact.type = artifact_type_t::window;         }
@@ -149,14 +149,14 @@ void populate_artifactory_from_file(project_artifactory_t& artifactory, const fs
     lua.set_function("Link", [&](sol::object obj) {
         auto values = get_values(obj);
         for (auto& value : values.values) {
-            project->links.push_back({std::string(value), &project->dir});
+            project->links.push_back(project->dir / value);
         }
     });
 
     lua.set_function("Shared", [&](sol::object obj) {
         auto values = get_values(obj);
         for (auto& value : values.values) {
-            project->shared_libs.push_back({std::string(value), &project->dir});
+            project->shared_libs.push_back(project->dir / value);
         }
     });
 
