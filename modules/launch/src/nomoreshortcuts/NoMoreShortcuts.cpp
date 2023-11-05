@@ -26,7 +26,11 @@ App::App()
     queue = context.GetQueue(nova::QueueFlags::Graphics, 0);
     imDraw = std::make_unique<nova::ImDraw2D>(context);
 
+    std::filesystem::create_directories(std::filesystem::path(indexFile).parent_path());
+
+NOVA_DEBUG();
     searcher.init(context, context.GetQueue(nova::QueueFlags::Compute, 0));
+NOVA_DEBUG();
 
     {
         GLFWimage iconImage;
@@ -64,18 +68,24 @@ App::App()
 
     using namespace std::chrono;
 
+NOVA_DEBUG();
     resultList = std::make_unique<ResultListPriorityCollector>();
     favResultList = std::make_unique<FavResultList>();
     NOVA_LOGEXPR(favResultList);
     fileResultList = std::make_unique<FileResultList>(&searcher, favResultList.get());
     resultList->AddList(favResultList.get());
     resultList->AddList(fileResultList.get());
+NOVA_DEBUG();
 
     show = false;
 
+NOVA_DEBUG();
     UpdateIndex();
+NOVA_DEBUG();
     ResetItems();
+NOVA_DEBUG();
     UpdateQuery();
+NOVA_DEBUG();
 }
 
 App::~App()
@@ -327,9 +337,6 @@ void App::Draw()
         {
             icon = &iconCache[path];
             icon->texture = nms::LoadIconFromPath(context, path.string());
-
-            if (icon->texture)
-                icon->texID = imDraw->RegisterTexture(icon->texture, imDraw->GetDefaultSampler());
         }
         else
         {
@@ -345,7 +352,7 @@ void App::Draw()
                 .halfExtent = Vec2(iconSize) / 2.f,
 
                 .texTint = Vec4(1.f),
-                .texIndex = icon->texID,
+                .texIndex = icon->texture.GetDescriptor(),
                 .texCenterPos = { 0.5f, 0.5f },
                 .texHalfExtent = { 0.5f, 0.5f },
             });
@@ -475,7 +482,13 @@ void App::OnChar(u32 codepoint)
 
 void App::UpdateIndex()
 {
-    load_index(index, "index.bin");
+    if (std::filesystem::exists(indexFile)) {
+        load_index(index, indexFile.c_str());
+    } else {
+        index_filesystem(index);
+        sort_index(index);
+        save_index(index, indexFile.c_str());
+    }
     searcher.set_index(index);
     fileResultList->Filter(keywords);
 }
@@ -556,6 +569,7 @@ void App::OnKey(u32 key, i32 action, i32 mods)
             auto str = view->GetPath().string();
             NOVA_LOG("Copying {}!", str);
 
+            favResultList->IncrementUses(view->GetPath());
             OpenClipboard(glfwGetWin32Window(window));
             EmptyClipboard();
             auto contentHandle = GlobalAlloc(GMEM_MOVEABLE, str.size() + 1);
@@ -583,7 +597,7 @@ void App::OnKey(u32 key, i32 action, i32 mods)
                     NOVA_LOG("Sorting...");
                     sort_index(index);
                     NOVA_LOG("Saving...");
-                    save_index(index, "index.bin");
+                    save_index(index, indexFile.c_str());
                     UpdateIndex();
 
                     NOVA_LOG("Indexing complete. Close this window and refresh the index with F5 in app.");

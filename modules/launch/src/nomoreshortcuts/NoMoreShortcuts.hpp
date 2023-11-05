@@ -28,6 +28,7 @@ public:
     std::vector<std::unique_ptr<ResultItem>> items;
     u32 selection;
 
+    std::string indexFile = std::format("{}\\.nms\\index.bin", getenv("USERPROFILE"));
     index_t index;
     file_searcher_t searcher;
 
@@ -37,8 +38,7 @@ public:
 
     struct IconResult
     {
-        nova::Texture        texture = {};
-        nova::DescriptorHandle texID;
+        nova::Texture texture = {};
     };
 
     ankerl::unordered_dense::map<std::filesystem::path, IconResult> iconCache;
