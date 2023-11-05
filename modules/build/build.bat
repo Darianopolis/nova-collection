@@ -38,3 +38,4 @@ cd ..\..
 echo Bootstrapping...
 
 build\out\bldr.exe make -clean bldr
+bin\bldr ide bldr

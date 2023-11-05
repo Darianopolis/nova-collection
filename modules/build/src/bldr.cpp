@@ -19,9 +19,9 @@ bldr install add    : Install new bldr files
      .       list   : List bldr files
      env     clear  : Clear environemnts
      make           : Build projects
-                      -clean   : Clean build
-                      -no-warn : Disable warnings
-                      -no-opt  : Disable optimizations
+     .                -clean   : Clean build
+     .                -no-warn : Disable warnings
+     .                -no-opt  : Disable optimizations
      ide            : Configure intellisense for supported IDEs
 )");
     std::exit(1);

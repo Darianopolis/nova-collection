@@ -1,0 +1,14 @@
+- Clean up architecture
+    - Remove globals
+    - Programmatic main folder
+- Use sqlite for storing program state
+    - Environments
+    - Installed files
+- Add profiles
+    - compile/link flags
+- Use custom filesystem library?
+    - Pros:
+        - Reduce allocations
+        - Fast and consistent path normalization
+    - Cons:
+        - Complicates bootstrapping process
