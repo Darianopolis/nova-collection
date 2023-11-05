@@ -119,6 +119,7 @@ struct project_t
     std::vector<path_t>      links;
     std::vector<define_t>    build_defines;
     std::vector<define_t>    defines;
+    std::vector<path_t>      shared_libs;
 
     std::optional<artifact_t> artifact;
 };

@@ -51,7 +51,6 @@ void populate_artifactory_from_file(project_artifactory_t& artifactory, const fs
     // TODO:
     lua.set_function("Os", []{});
     lua.set_function("Error", []{});
-    lua.set_function("Dynamic", []{});
 
     lua.set_function("Project", [&](std::string_view name) {
         if (project && is_set(flags, flags_t::trace)) {
@@ -154,8 +153,20 @@ void populate_artifactory_from_file(project_artifactory_t& artifactory, const fs
         }
     });
 
+    lua.set_function("Shared", [&](sol::object obj) {
+        auto values = get_values(obj);
+        for (auto& value : values.values) {
+            project->shared_libs.push_back({std::string(value), &project->dir});
+        }
+    });
+
     sol::environment env(lua, sol::create, lua.globals());
-    lua.script_file(file.string());
+    auto res = lua.safe_script_file(file.string(), &sol::script_pass_on_error);
+    if (!res.valid()) {
+        sol::error error = res;
+        log_error("Error running bldr file: {}", error.what());
+        std::exit(1);
+    }
 
     if (project && is_set(flags, flags_t::trace)) {
         debug_project(*project);

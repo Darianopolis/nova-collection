@@ -184,6 +184,7 @@ void generate_build(project_artifactory_t& artifactory,  project_t& project, pro
         insert_all(output.force_includes, cur_project.force_includes);
         insert_all(output.lib_paths,      cur_project.lib_paths);
         insert_all(output.links,          cur_project.links);
+        insert_all(output.shared_libs,    cur_project.shared_libs);
         insert_all(output.build_defines,
             &cur_project == &project
                 ? cur_project.build_defines
@@ -430,15 +431,37 @@ void build_project(std::span<project_t*> projects, flags_t flags)
             // Link
 
             auto res = execute_program(info, flags);
-            if (res == 0) {
+            if (res != 0) {
+                errors++;
+                continue;
+            }
 
-                // Copy output
-                // TODO: Copy imported shared libraries
+            // Copy output
 
+            try {
                 fs::create_directories(path.parent_path());
                 fs::remove(path);
                 fs::copy(build_path, path);
-            } else {
+
+                for (auto& shared_lib : project.shared_libs) {
+                    auto slib_path = shared_lib.to_fspath();
+                    // TODO: Implement generic glob expansion
+                    if (slib_path.filename() == "*.dll") {
+                        for (auto& e : fs::directory_iterator(slib_path.parent_path())) {
+                            slib_path = e.path();
+                            if (slib_path.extension() != ".dll") continue;
+                            auto slib_target = path.parent_path() / slib_path.filename();
+                            fs::remove(slib_target);
+                            fs::copy(slib_path, slib_target);
+                        }
+                    } else {
+                        auto slib_target = path.parent_path() / slib_path.filename();
+                        fs::remove(slib_target);
+                        fs::copy(slib_path, slib_target);
+                    }
+                }
+            } catch (const std::exception& e) {
+                log_error("{}", e.what());
                 errors++;
             }
         }
