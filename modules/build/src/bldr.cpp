@@ -28,13 +28,14 @@ bldr install add    : Install new bldr files
 
 int main(int argc, char* argv[]) try
 {
-    s_paths.dir = fs::path(std::getenv("USERPROFILE")) / ".bldr-cpp";
+    std::vector<std::string_view> args(argv, argv + argc);
+
+    s_paths.dir = fs::path(std::getenv("USERPROFILE")) / ".bldr";
     s_paths.artifacts    = s_paths.dir / "artifacts";
     s_paths.environments = s_paths.dir / "environments";
     s_paths.installed    = s_paths.dir / "installed";
     fs::create_directories(s_paths.dir);
 
-    std::vector<std::string_view> args(argv, argv + argc);
     if (args.size() < 2) display_help("Expected action");
 
     if (args[1] == "install") {

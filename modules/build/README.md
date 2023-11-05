@@ -21,4 +21,4 @@ bldr install add    : Install new bldr files
 
 1) Run: `setup.bat` (Builds dependencies)
 2) Run: `build.bat` (Builds and bootstraps bldr)
-3) Put `out/bldr.exe` on system PATH
+3) Put `bin/bldr.exe` on system PATH

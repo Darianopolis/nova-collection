@@ -1,5 +1,3 @@
 .vscode/
 build/
-out/
-vendor/
-artifacts/
+bin/

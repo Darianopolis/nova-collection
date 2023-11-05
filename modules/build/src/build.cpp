@@ -193,7 +193,7 @@ void build_project(project_t& project, flags_t flags)
     }
 
 #pragma omp parallel for
-    for (uint32_t i = 0; i < project.sources.size(); ++i) {
+    for (int32_t i = 0; i < int32_t(project.sources.size()); ++i) {
         auto& source = project.sources[i];
 
         program_exec_t info;
@@ -252,13 +252,6 @@ void build_project(project_t& project, flags_t flags)
     if (project.artifact) {
         auto& artifact = project.artifact.value();
         auto path = artifact.path.to_fspath();
-        if (is_set(flags, flags_t::clean)) {
-            for (auto& ext : { ".ilk", ".exe", ".exp", ".lib", ".pdb", ".dll" }) {
-                path.replace_extension(ext);
-                std::cout << "Cleaning artifact [" << path.string() << "]\n";
-                fs::remove(path);
-            }
-        }
 
         program_exec_t info;
         info.working_directory = {artifacts_dir.string()};
@@ -283,24 +276,32 @@ void build_project(project_t& project, flags_t flags)
         arg(info, "/NODEFAULTLIB:libcmt.lib");
         arg(info, "/NODEFAULTLIB:libcmtd.lib");
 
+        // Target
+
         if (artifact.type == artifact_type_t::console || artifact.type == artifact_type_t::window) {
             arg(info, "/SUBSYSTEM:", artifact.type == artifact_type_t::console ? "CONSOLE" : "WINDOWS");
             path.replace_extension(".exe");
-            arg(info, "/OUT:", path.string());
-            fs::create_directories(path.parent_path());
         } else if (artifact.type == artifact_type_t::shared_library) {
             arg(info, "/DLL");
             path.replace_extension(".dll");
-            arg(info, "/OUT:", path.string());
         }
+
+        auto build_path = project_artifacts / path.filename();
+        arg(info, "/OUT:", build_path.string());
+
+        // Library paths
 
         for (auto& lib_path : project.lib_paths) {
             arg(info, "/LIBPATH:", lib_path.to_fspath().string());
         }
 
+        // Additional Links
+
         for (auto& link : project.links) {
             arg(info, link.to_fspath().string());
         }
+
+        // Import objects
 
         for (auto& import : project.imports) {
             auto dir = artifacts_dir / import;
@@ -314,6 +315,8 @@ void build_project(project_t& project, flags_t flags)
             }
         }
 
+        // Add default windows libraries
+
         arg(info, "user32.lib");
         arg(info, "gdi32.lib");
         arg(info, "shell32.lib");
@@ -323,7 +326,16 @@ void build_project(project_t& project, flags_t flags)
         arg(info, "comsuppw.lib");
         arg(info, "onecore.lib");
 
+        // Link
+
         execute_program(info);
+
+        // Copy output
+        // TODO: Copy imported shared libraries
+
+        fs::create_directories(path.parent_path());
+        fs::remove(path);
+        fs::copy(build_path, path);
     }
 }
 
