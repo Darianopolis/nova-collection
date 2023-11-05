@@ -8,6 +8,37 @@
 #include <span>
 
 using namespace std::literals;
+namespace fs = std::filesystem;
+
+struct paths_t
+{
+    fs::path dir;
+    fs::path installed;
+    fs::path artifacts;
+    fs::path environments;
+};
+
+inline paths_t s_paths;
+
+enum class flags_t : uint64_t
+{
+    none,
+    clean  = 1 << 0,
+    nowarn = 1 << 1,
+    noopt  = 1 << 2,
+};
+
+inline
+bool is_set(flags_t flags, flags_t test)
+{
+    return std::to_underlying(flags) & std::to_underlying(test);
+}
+
+inline
+flags_t operator|(flags_t l, flags_t r)
+{
+    return flags_t(std::to_underlying(l) | std::to_underlying(r));
+}
 
 enum class source_type_t
 {
@@ -37,7 +68,7 @@ struct path_t
     std::string path;
     path_t*   parent = nullptr;
 
-    std::filesystem::path to_fspath(int end_cutoff = 0) const
+    fs::path to_fspath(int end_cutoff = 0) const
     {
         auto head = std::string_view(path).substr(0, path.size() - end_cutoff);
         if (parent) return parent->to_fspath() / head;
@@ -113,7 +144,6 @@ struct environment_t
 struct program_exec_t
 {
     path_t working_directory;
-    path_t executable;
 
     program_exec_t* parent = nullptr;
 

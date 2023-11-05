@@ -30,7 +30,7 @@ values_t get_values(sol::object obj)
     return values;
 }
 
-void populate_artifactory_from_file(project_artifactory_t& artifactory, const std::filesystem::path& file)
+void populate_artifactory_from_file(project_artifactory_t& artifactory, const fs::path& file)
 {
     sol::state lua;
 
@@ -64,7 +64,7 @@ void populate_artifactory_from_file(project_artifactory_t& artifactory, const st
     });
 
     lua.set_function("Dir", [&](std::string_view name) {
-        project->dir = {std::filesystem::absolute(name).string()};
+        project->dir = {fs::absolute(name).string()};
     });
 
     lua.set_function("Compile", [&](sol::object obj) {
@@ -149,7 +149,7 @@ void populate_artifactory_from_file(project_artifactory_t& artifactory, const st
 
 void populate_artifactory(project_artifactory_t& artifactory)
 {
-    for (auto& file : std::filesystem::directory_iterator(std::filesystem::current_path())) {
+    for (auto& file : fs::directory_iterator(fs::current_path())) {
         if (file.path().string().ends_with("bldr.lua")) {
             std::cout << "Loading bldr file: " << file.path().string() << '\n';
             populate_artifactory_from_file(artifactory, file.path());

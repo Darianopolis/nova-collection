@@ -3,6 +3,8 @@
 #include <unordered_set>
 #include <filesystem>
 #include <array>
+#include <fstream>
+#include <algorithm>
 
 #define NOMINMAX
 #define WIN32_LEAN_AND_MEAN
@@ -10,6 +12,111 @@
 #include "shellapi.h"
 
 namespace fs = std::filesystem;
+
+std::string generate_env()
+{
+    auto env_file = s_paths.environments / "msvc";
+    fs::create_directories(s_paths.environments);
+
+    {
+        std::ifstream in(env_file, std::ios::binary | std::ios::ate);
+        if (in.is_open()) {
+            std::string str;
+            str.resize(in.tellg());
+            in.seekg(0);
+            in.read(str.data(), str.size());
+            return str;
+        }
+    }
+
+    // TODO: Move all of this process execution + input + output into unified helper
+    STARTUPINFOA startup{};
+    PROCESS_INFORMATION process{};
+
+    std::string cmd = "cmd /c call \"C:/Program Files/Microsoft Visual Studio/2022/Community/VC/Auxiliary/Build/vcvarsx86_amd64.bat\" && set";
+
+    SECURITY_ATTRIBUTES sec_attribs;
+    SecureZeroMemory(&sec_attribs, sizeof(sec_attribs));
+    sec_attribs.nLength = sizeof(sec_attribs);
+    sec_attribs.bInheritHandle = true;
+    sec_attribs.lpSecurityDescriptor = nullptr;
+
+    HANDLE stdout_read_handle;
+    HANDLE stdout_write_handle;
+
+    CreatePipe(&stdout_read_handle, &stdout_write_handle, &sec_attribs, 0);
+
+    startup.cb = sizeof(startup);
+    startup.hStdError = stdout_write_handle;
+    startup.hStdOutput = stdout_write_handle;
+    startup.hStdInput = GetStdHandle(STD_INPUT_HANDLE);
+    startup.dwFlags = STARTF_USESTDHANDLES;
+
+    auto res = CreateProcessA(
+        nullptr,
+        cmd.data(),
+        nullptr,
+        nullptr,
+        true,
+        0,
+        nullptr,
+        nullptr,
+        &startup,
+        &process);
+
+    if (!res) {
+        std::cout << "Error creating environment: " << GetLastError() << '\n';
+    } else {
+        CloseHandle(stdout_write_handle);
+
+        std::cout << "Generating MSVC environment...\n";
+
+        std::string output;
+        std::array<char, 4096> buffer{};
+        DWORD bytes_read;
+        BOOL success;
+        for (;;) {
+            success = ReadFile(stdout_read_handle, buffer.data(), DWORD(buffer.size()) - 1, &bytes_read, 0);
+            if (!success || bytes_read == 0) break;
+            output.append(buffer.data(), bytes_read);
+        }
+
+        WaitForSingleObject(process.hProcess, INFINITE);
+        CloseHandle(stdout_read_handle);
+
+        std::cout << "Creating environment:\n" << output << '\n';
+
+        std::string env;
+        std::string line;
+        std::stringstream ss(output);
+        while (std::getline(ss, line)) {
+            if (line.ends_with('\r')) {
+                line = line.substr(0, line.size() - 1);
+            }
+            if (line.find_first_of('=') != std::string::npos) {
+                env.append(line);
+                env.push_back('\0');
+            }
+        }
+        env.push_back('\0');
+
+        {
+            std::ofstream out(env_file, std::ios::binary);
+            out.write(env.data(), env.size());
+        }
+
+
+        return env;
+    }
+
+    std::exit(1);
+}
+
+const std::string& get_build_environment()
+{
+    static std::string env = generate_env();
+    return env;
+}
 
 void generate_build(project_artifactory_t& artifactory,  project_t& project, project_t& output)
 {
@@ -78,7 +185,7 @@ void generate_build(project_artifactory_t& artifactory,  project_t& project, pro
 
 void build_project(project_t& project)
 {
-    auto artifacts_dir = std::filesystem::current_path() / "artifacts";
+    auto artifacts_dir = fs::current_path() / "artifacts";
 
 #pragma omp parallel for
     for (uint32_t i = 0; i < project.sources.size(); ++i) {
@@ -86,9 +193,8 @@ void build_project(project_t& project)
 
         program_exec_t info;
         auto dir = artifacts_dir / project.name;
-        std::filesystem::create_directories(dir);
+        fs::create_directories(dir);
         info.working_directory = {dir.string()};
-        info.executable = {std::string("cl.exe")};
 
         auto arg = [&](auto& exec_info, auto&&... args)
         {
@@ -97,9 +203,13 @@ void build_project(project_t& project)
             exec_info.arguments.push_back(ss.str());
         };
 
+        arg(info, "cmd");
+        arg(info, "/c");
+        arg(info, "cl");
+
         arg(info, "/c");
         arg(info, "/nologo");
-        arg(info, "/arch:AVX512");
+        arg(info, "/arch:AVX2");
         arg(info, "/MD");
         arg(info, "/Zc:preprocessor");
         arg(info, "/fp:fast");
@@ -138,7 +248,6 @@ void build_project(project_t& project)
     if (project.artifact) {
         program_exec_t info;
         info.working_directory = {artifacts_dir.string()};
-        info.executable = {std::string("link.exe")};
 
         auto arg = [&](auto& exec_info, auto&&... args)
         {
@@ -146,6 +255,10 @@ void build_project(project_t& project)
             (ss << ... << args);
             exec_info.arguments.push_back(ss.str());
         };
+
+        arg(info, "cmd");
+        arg(info, "/c");
+        arg(info, "link");
 
         arg(info, "/nologo");
         arg(info, "/IGNORE:4099");
@@ -155,7 +268,7 @@ void build_project(project_t& project)
         arg(info, "/NODEFAULTLIB:libcmtd.lib");
         arg(info, "/SUBSYSTEM:CONSOLE");
         arg(info, "/OUT:", project.artifact->path.to_fspath().string());
-        std::filesystem::create_directories(project.artifact->path.to_fspath().parent_path());
+        fs::create_directories(project.artifact->path.to_fspath().parent_path());
 
         for (auto& lib_path : project.lib_paths) {
             arg(info, "/LIBPATH:", lib_path.to_fspath().string());
@@ -167,11 +280,11 @@ void build_project(project_t& project)
 
         for (auto& import : project.imports) {
             auto dir = artifacts_dir / import;
-            if (!std::filesystem::exists(dir)) continue;
-            auto iter = std::filesystem::directory_iterator(dir);
+            if (!fs::exists(dir)) continue;
+            auto iter = fs::directory_iterator(dir);
             for (auto& file : iter) {
                 if (file.path().extension() == ".obj") {
-                    auto relative = std::filesystem::relative(file, artifacts_dir).string();
+                    auto relative = fs::relative(file, artifacts_dir).string();
                     arg(info, relative);
                 }
             }
@@ -202,7 +315,6 @@ void execute_program(const program_exec_t& info)
         }
     };
 
-    cmd(info.executable.to_fspath().string());
     for (auto& arg : info.arguments) cmd(arg);
 
     std::string cmd_line = ss.str();
@@ -218,7 +330,7 @@ void execute_program(const program_exec_t& info)
         nullptr,
         false,
         NORMAL_PRIORITY_CLASS,
-        nullptr,
+        (void*)get_build_environment().c_str(),
         info.working_directory.to_fspath().string().c_str(),
         &startup,
         &process);
