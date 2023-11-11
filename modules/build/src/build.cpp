@@ -337,6 +337,8 @@ void build_project(std::span<project_t*> projects, flags_t flags)
     }
 
     std::atomic_uint32_t errors = 0;
+    std::atomic_uint32_t aborted = 0;
+    std::atomic_uint32_t skipped = 0;
 
     log_info("Compiling {} files...", compile_tasks.size());
 
@@ -346,6 +348,11 @@ void build_project(std::span<project_t*> projects, flags_t flags)
         auto& project = *task.project;
         auto& source = project.sources[task.source_idx];
 
+        if (errors > 0) {
+            aborted++;
+            continue;
+        }
+
         {
             auto target_obj = source.file;
             target_obj.replace_extension(".obj");
@@ -353,8 +360,10 @@ void build_project(std::span<project_t*> projects, flags_t flags)
             if (fs::exists(target_obj)) {
                 auto last_modified = fs::last_write_time(target_obj);
                 if (!is_dirty(project, source.file, last_modified)) {
+                    skipped++;
                     continue;
                 }
+                fs::remove(target_obj);
             }
         }
 
@@ -380,7 +389,7 @@ void build_project(std::span<project_t*> projects, flags_t flags)
         arg(info, "/MD");              // Use dynamic non-debug CRT. TODO: Parameterize
         arg(info, "/Zc:preprocessor"); // Use conforming preprocessor
         arg(info, "/permissive-");     // Disable permissive mode
-        arg(info, "/fp:fast");         // Allow floating point reordering
+        // arg(info, "/fp:fast");         // Allow floating point reordering
         arg(info, "/utf-8");           // Set source and execution character sets
         arg(info, "/O2");              // Use maximum options
         arg(info, "/Ob3");             // Use maximum inlining
@@ -527,18 +536,25 @@ void build_project(std::span<project_t*> projects, flags_t flags)
 
     auto end = std::chrono::steady_clock::now();
 
+    if (skipped > 0) {
+        log_info("Skipped {} clean files", skipped.load());
+    }
+
     if (errors == 0) {
         log_info("------------------------------------------------------------------------");
         log_info("\u001B[92mBuild Success\u001B[0m | Total time: {}", duration_to_string(end - start));
         log_info("------------------------------------------------------------------------");
     } else {
+        if (aborted > 0) {
+            log_warn("Aborted {} files after errors", aborted.load());
+        }
         log_error("------------------------------------------------------------------------");
         log_error("\u001B[91mBuild Failure!\u001B[0m | Errors: {}", errors.load());
         log_error("------------------------------------------------------------------------");
     }
 }
 
-void configure_ide(project_t& project, flags_t flags)
+void configure_vscode(project_t& project, flags_t flags)
 {
     (void)flags;
 
@@ -605,4 +621,39 @@ void configure_ide(project_t& project, flags_t flags)
         std::ofstream vscode_out(fs::path(".vscode/c_cpp_properties.json"), std::ios::binary);
         vscode_out << std::vformat(vscode_layout, std::make_format_args(defines, force_includes, includes, compiler_path));
     }
+}
+
+void configure_cmake(project_t& project, flags_t flags)
+{
+    (void)flags;
+
+    {
+        std::ofstream out(fs::path("CMakeLists.txt"), std::ios::binary);
+
+        out << "cmake_minimum_required(VERSION 3.27)\n";
+        out << "\n";
+        out << "project(" << project.name << ")\n";
+        out << "\n";
+        out << "set(CMAKE_CXX_STANDARD 23)\n";
+        out << "set(CMAKE_CXX_STANDARD_REQUIRED True)\n";
+        out << "\n";
+        out << "add_compile_options(\n";
+        out << "    /Zc:preprocessor\n";
+        out << "    /Zc:__cplusplus\n";
+        out << "    /utf-8\n";
+        out << "    )\n";
+        out << "\n";
+        for (auto& include : project.includes) {
+            out << "include_directories(" << to_string(include) << ")\n";
+        }
+        out << "\n";
+        out << "file(GLOB_RECURSE SENSE_FILES *.cppm *.cxx *.cc *.cpp *.hpp *.c *.h)\n";
+        out << "add_library(${PROJECT_NAME} ${SENSE_FILES})\n";
+    }
+}
+
+void configure_ide(project_t& project, flags_t flags)
+{
+    // configure_vscode(project, flags);
+    configure_cmake(project, flags);
 }

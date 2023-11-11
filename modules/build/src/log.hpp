@@ -36,7 +36,7 @@ template<class... Args>
 void log_warn(const std::format_string<Args...> fmt, Args&&... args)
 {
     std::osyncstream os(std::cout);
-    os << "[\u001B[92mWARN\u001B[0m] " << std::vformat(fmt.get(), std::make_format_args(args...)) << '\n';
+    os << "[\u001B[93mWARN\u001B[0m] " << std::vformat(fmt.get(), std::make_format_args(args...)) << '\n';
 }
 
 inline

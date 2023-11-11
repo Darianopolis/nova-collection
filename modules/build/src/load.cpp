@@ -88,7 +88,12 @@ void populate_artifactory_from_file(project_artifactory_t& artifactory, const fs
     lua.set_function("Include", [&](sol::object obj) {
         auto values = get_values(obj);
         for (auto& value : values.values) {
-            project->includes.push_back(project->dir / value);
+            auto path = project->dir / value;
+            if (fs::is_directory(path)) {
+                project->includes.push_back(project->dir / value);
+            } else {
+                project->force_includes.push_back(value);
+            }
         }
     });
 
