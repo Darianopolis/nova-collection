@@ -69,3 +69,5 @@ std::string duration_to_string(std::chrono::duration<double, std::nano> dur)
 
     return "0";
 }
+
+#define DEBUG_LINE log_info("Debug :: {} @ {}", __LINE__, __FILE__);

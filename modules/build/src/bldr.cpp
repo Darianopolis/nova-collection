@@ -144,15 +144,46 @@ int main(int argc, char* argv[]) try
         if (to_build.size()) {
             build_project(to_build, flags);
         }
+
+    } else if (args[1] == "pack") {
+        if (argc < 4) {
+            display_help("Expected source and target for packing");
+        }
+
+        auto source = fs::path(args[2]);
+        auto target = args[3];
+        auto target_path = fs::path(target);
+        target_path.replace_extension(".h");
+        log_info("Packing {} into {}", source.string(), target);
+
+        {
+            std::ifstream in(source, std::ios::binary | std::ios::ate);
+            std::vector<uint64_t> data;
+            size_t size = in.tellg();
+            data.resize((size + 7) / 8);
+            in.seekg(0);
+            in.read((char*)data.data(), size);
+
+            std::ofstream out(target_path, std::ios::binary);
+            out << "#include <stdint.h>\n";
+            out << std::format("constexpr inline uint64_t {}[{}] = {{\n    ", target, data.size());
+            for (size_t i = 0; i < data.size(); ++i) {
+                if (i > 0) out << ",";
+                out << std::format("{:#x}", data[i]);
+            }
+            out << "\n};\n";
+            out << std::format("constexpr inline size_t {}_size = {};\n", target, size);
+        }
+
     } else {
         display_help(std::format("Unknown action: '{}'", args[1]));
     }
 }
 catch (const std::exception& e)
 {
-    log_error("{}", e.what());
+    log_error("Caught: {}", e.what());
 }
 catch (...)
 {
-    log_error("Unknown error");
+    log_error("Caught unknown error");
 }

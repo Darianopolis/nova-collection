@@ -266,6 +266,10 @@ bool is_dirty(const project_t& project, const fs::path& path, fs::file_time_type
 
         std::string str;
         std::ifstream in(cur, std::ios::binary | std::ios::ate);
+        if (!in.is_open()) {
+            log_warn("Couldn't open file {}", cur.string());
+            return false;
+        }
         str.resize(in.tellg());
         in.seekg(0);
         in.read(str.data(), str.size());
@@ -281,7 +285,7 @@ bool is_dirty(const project_t& project, const fs::path& path, fs::file_time_type
 
             if (check_local) {
                 auto new_path = cur.parent_path() / fs::path(file);
-                if (fs::exists(new_path)) {
+                if (fs::exists(new_path) && !fs::is_directory(new_path)) {
                     if (self(std::move(new_path))) {
                         return true;
                     }
@@ -291,7 +295,7 @@ bool is_dirty(const project_t& project, const fs::path& path, fs::file_time_type
 
             for (auto& include : project.includes) {
                 auto new_path = include / file;
-                if (fs::exists(new_path)) {
+                if (fs::exists(new_path) && !fs::is_directory(new_path)) {
                     if (self(std::move(new_path))) {
                         return true;
                     }
@@ -387,6 +391,7 @@ void build_project(std::span<project_t*> projects, flags_t flags)
         arg(info, "/nologo");          // Suppress banner
         arg(info, "/arch:AVX2");       // AVX2 vector extensions
         arg(info, "/MD");              // Use dynamic non-debug CRT. TODO: Parameterize
+        // arg(info, "/MDd");              // Use dynamic debug CRT. TODO: Parameterize
         arg(info, "/Zc:preprocessor"); // Use conforming preprocessor
         arg(info, "/permissive-");     // Disable permissive mode
         // arg(info, "/fp:fast");         // Allow floating point reordering
@@ -396,6 +401,11 @@ void build_project(std::span<project_t*> projects, flags_t flags)
 
         arg(info, "/DUNICODE");  // Specify UNICODE for win32
         arg(info, "/D_UNICODE");
+
+        arg(info, "/Z7");
+        arg(info, "/DEBUG");
+        // arg(info, "/DDEBUG");
+        // arg(info, "/D_DEBUG");
 
         if (source.type == source_type_t::c) {
             arg(info, "/std:c17");
@@ -451,9 +461,12 @@ void build_project(std::span<project_t*> projects, flags_t flags)
             arg(info, "/INCREMENTAL");    // TODO: Add option for full optimizing link
             arg(info, "/DYNAMICBASE:NO"); // Disable address space layout randomization.
 
+            // arg(info, "/NODEFAULTLIB:msvcrt.lib");
             arg(info, "/NODEFAULTLIB:msvcrtd.lib");
             arg(info, "/NODEFAULTLIB:libcmt.lib");
             arg(info, "/NODEFAULTLIB:libcmtd.lib");
+
+            arg(info, "/DEBUG");
 
             // Target
 
@@ -504,6 +517,11 @@ void build_project(std::span<project_t*> projects, flags_t flags)
             arg(info, "Comdlg32.lib");
             arg(info, "comsuppw.lib");
             arg(info, "onecore.lib");
+
+            arg(info, "D3D12.lib");
+            arg(info, "DXGI.lib");
+            arg(info, "dcomp.lib");
+            arg(info, "d3d11.lib");
 
             // Link
 
@@ -654,6 +672,6 @@ void configure_cmake(project_t& project, flags_t flags)
 
 void configure_ide(project_t& project, flags_t flags)
 {
-    // configure_vscode(project, flags);
-    configure_cmake(project, flags);
+    configure_vscode(project, flags);
+    // configure_cmake(project, flags);
 }
