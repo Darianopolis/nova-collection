@@ -7,22 +7,6 @@ echo Setting up env...
 call "C:/Program Files/Microsoft Visual Studio/2022/Community/VC/Auxiliary/Build/vcvarsx86_amd64.bat"
 :env_missing_0
 
-mkdir build\vendor
-cd build\vendor
-
-    git clone --depth 1 https://github.com/LuaJIT/LuaJIT.git
-    cd luajit\src
-        git pull
-        call msvcbuild.bat static
-    cd ..\..
-
-    git clone --depth 1 https://github.com/ThePhD/sol2.git
-    cd sol2
-        git pull
-    cd ..
-
-cd ..\..
-
 mkdir build\out >nul 2>&1
 del build\out\* /Q
 cd build\out
@@ -54,6 +38,4 @@ cd ..\..
 
 echo Bootstrapping...
 
-build\out\bldr.exe ide bldr
 build\out\bldr.exe make -clean bldr
-bin\bldr ide bldr

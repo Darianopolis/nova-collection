@@ -1,7 +1,7 @@
 if Project "luajit" then
-    Dir "build/vendor/luajit"
-    Include "src"
-    Link { "src/luajit.lib", "src/lua51.lib" }
+     Dir "build/vendor/luajit"
+     Include "src"
+     Link { "src/luajit.lib", "src/lua51.lib" }
 end
 
 if Project "sol2" then

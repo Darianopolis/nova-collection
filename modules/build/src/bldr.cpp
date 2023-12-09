@@ -110,7 +110,7 @@ int main(int argc, char* argv[]) try
 
         fs::remove_all(s_paths.environments);
 
-    } else if (args[1] == "make" || args[1] == "ide") {
+    } else if (args[1] == "make" || args[1] == "ide" || args[1] == "cmake") {
         std::vector<std::string_view> projects;
         flags_t flags{};
         for (uint32_t i = 2; i < args.size(); ++i) {
@@ -137,12 +137,13 @@ int main(int argc, char* argv[]) try
                 log_debug(" ---- Combined project ----");
                 debug_project(*build);
             }
-            if      (args[1] == "make") to_build.push_back(build);
+            if (args[1] == "make" || args[1] == "cmake") to_build.push_back(build);
             else if (args[1] == "ide")  configure_ide(*build, flags);
         }
 
-        if (to_build.size()) {
-            build_project(to_build, flags);
+        if (!to_build.empty()) {
+            if (args[1] == "make") build_project(to_build, flags);
+            else if (args[1] == "cmake") configure_cmake(to_build, flags);
         }
 
     } else if (args[1] == "pack") {

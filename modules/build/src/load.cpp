@@ -1,3 +1,5 @@
+#include <excpt.h>
+
 #include "bldr.hpp"
 #include <log.hpp>
 
@@ -6,13 +8,17 @@
 #include <unordered_set>
 #include <fstream>
 
+#define NOMINMAX
+#define WIN32_LEAN_AND_MEAN
+#include <Windows.h>
+
 struct values_t
 {
     std::vector<std::string> values;
     std::unordered_map<std::string, std::string> options;
 };
 
-values_t get_values(sol::object obj)
+values_t get_values(const sol::object& obj)
 {
     values_t values;
 
@@ -24,8 +30,13 @@ values_t get_values(sol::object obj)
             }
         }
         int i = 1;
-        while (table[i]) {
-            values.values.push_back(table[i++].get<std::string>());
+        while (table.get<sol::object>(i)) {
+            auto object = table.get<sol::object>(i++);
+            if (object.is<sol::string_view>()) {
+                values.values.push_back(object.as<std::string>());
+            } else {
+                log_error("Illegal non-string argument in get_values");
+            }
         }
     } else {
         values.values.push_back(obj.as<std::string>());
@@ -70,7 +81,7 @@ void populate_artifactory_from_file(project_artifactory_t& artifactory, const fs
         project->dir = {fs::absolute(default_dir / name).string()};
     });
 
-    lua.set_function("Compile", [&](sol::object obj) {
+    lua.set_function("Compile", [&](const sol::object& obj) {
         auto values = get_values(obj);
         source_type_t type = source_type_t::automatic;
         if (values.options.contains("type")) {
@@ -85,7 +96,7 @@ void populate_artifactory_from_file(project_artifactory_t& artifactory, const fs
         }
     });
 
-    lua.set_function("Include", [&](sol::object obj) {
+    lua.set_function("Include", [&](const sol::object& obj) {
         auto values = get_values(obj);
         for (auto& value : values.values) {
             auto path = project->dir / value;
@@ -97,21 +108,21 @@ void populate_artifactory_from_file(project_artifactory_t& artifactory, const fs
         }
     });
 
-    lua.set_function("LibPath", [&](sol::object obj) {
+    lua.set_function("LibPath", [&](const sol::object& obj) {
         auto values = get_values(obj);
         for (auto& value : values.values) {
             project->lib_paths.push_back(project->dir / value);
         }
     });
 
-    lua.set_function("Import", [&](sol::object obj) {
+    lua.set_function("Import", [&](const sol::object& obj) {
         auto values = get_values(obj);
         for (auto& value : values.values) {
             project->imports.emplace_back(std::move(value));
         }
     });
 
-    lua.set_function("Define", [&](sol::object obj) {
+    lua.set_function("Define", [&](const sol::object& obj) {
         auto values = get_values(obj);
         bool build_scope = true;
         bool import_scope = true;
@@ -139,10 +150,16 @@ void populate_artifactory_from_file(project_artifactory_t& artifactory, const fs
         }
     });
 
-    lua.set_function("Artifact", [&](sol::object obj) {
+    lua.set_function("Artifact", [&](const sol::object& obj) {
         auto values = get_values(obj);
         artifact_t artifact{};
+        if (values.values.empty()) {
+            log_error("Missing target path for Artifact");
+        }
         artifact.path = project->dir / values.values.front();
+        if (!values.options.contains("type")) {
+            log_error("Missing type: Console/Window for Artifact");
+        }
         auto& type = values.options.at("type");
         if      (type == "Console") { artifact.type = artifact_type_t::console;        }
         if      (type == "Window")  { artifact.type = artifact_type_t::window;         }
@@ -151,14 +168,14 @@ void populate_artifactory_from_file(project_artifactory_t& artifactory, const fs
         project->artifact = std::move(artifact);
     });
 
-    lua.set_function("Link", [&](sol::object obj) {
+    lua.set_function("Link", [&](const sol::object& obj) {
         auto values = get_values(obj);
         for (auto& value : values.values) {
             project->links.push_back(project->dir / value);
         }
     });
 
-    lua.set_function("Shared", [&](sol::object obj) {
+    lua.set_function("Shared", [&](const sol::object& obj) {
         auto values = get_values(obj);
         for (auto& value : values.values) {
             project->shared_libs.push_back(project->dir / value);
@@ -166,11 +183,17 @@ void populate_artifactory_from_file(project_artifactory_t& artifactory, const fs
     });
 
     sol::environment env(lua, sol::create, lua.globals());
-    auto res = lua.safe_script_file(file.string(), &sol::script_pass_on_error);
-    if (!res.valid()) {
-        sol::error error = res;
-        log_error("Error running bldr file: {}", error.what());
-        std::exit(1);
+    try {
+        auto res = lua.safe_script_file(file.string(), &sol::script_throw_on_error);
+        if (!res.valid()) {
+            sol::error error = res;
+            log_error("Error returned running bldr file: {}", error.what());
+            std::exit(1);
+        }
+    } catch (const std::exception& e) {
+        log_error("Exception thrown running bldr file: {}", e.what());
+    } catch (...) {
+        log_error("Unknown error thrown running bldr file");
     }
 
     if (project && is_set(flags, flags_t::trace)) {

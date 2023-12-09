@@ -10,6 +10,8 @@
 
 #define NOMINMAX
 #define WIN32_LEAN_AND_MEAN
+#include <any>
+
 #include "Windows.h"
 #include "shellapi.h"
 
@@ -641,7 +643,133 @@ void configure_vscode(project_t& project, flags_t flags)
     }
 }
 
-void configure_cmake(project_t& project, flags_t flags)
+void configure_cmake(std::span<project_t*> projects, flags_t flags)
+{
+    auto artifacts_dir = s_paths.artifacts;
+
+    auto local_bldr_dir = fs::path(".bldr");
+    auto generated_marker = local_bldr_dir / "CMakeLists_generated";
+    auto cmakelists_path = fs::path("CMakeLists.txt");
+
+    if (fs::exists(cmakelists_path) && !fs::exists(generated_marker)) {
+        log_error("CMakeLists found and not marked as generated");
+        return;
+    }
+
+    {
+        fs::create_directories(local_bldr_dir);
+        std::ofstream out(generated_marker);
+        out << std::chrono::utc_clock().now();
+    }
+
+    std::ofstream out(fs::path("CMakeLists.txt"), std::ios::binary);
+
+    out << "cmake_minimum_required(VERSION 3.26)\n";
+    out << "project(" << projects[0]->name << ")\n";
+    out << "set(CMAKE_CXX_STANDARD 23)\n";
+    out << "set(CMAKE_CXX_STANDARD_REQUIRED True)\n";
+    out << "add_compile_options(\n";
+    out << "    /Zc:preprocessor\n";
+    out << "    /Zc:__cplusplus\n";
+    out << "    /utf-8)\n";
+    out << "include_directories(";
+    for (auto& project : projects) {
+        for (auto& include : project->includes) {
+            out << "\n    " << to_string(include);
+        }
+    }
+    out << ")\n";
+
+    for (int32_t i = 0; i < projects.size(); ++i) {
+        auto& project = *projects[i];
+        if (project.artifact) continue;
+
+        if (!project.sources.empty()) {
+            out << "add_library(" << project.name << " OBJECT";
+            for (auto& source : project.sources) {
+                out << "\n    " << to_string(source.file);
+            }
+            out << ")\n";
+
+            out << "target_compile_definitions(" << project.name << " PRIVATE";
+            for (auto& define : project.build_defines) {
+                out << "\n    -D" << to_string(define);
+            }
+            out << ")\n";
+        }
+    }
+
+    for (int32_t i = 0; i < projects.size(); ++i) {
+        auto& project = *projects[i];
+        if (!project.artifact) continue;
+
+        auto& artifact = project.artifact.value();
+        auto path = artifact.path;
+
+        auto name = project.name;
+
+        out << "add_executable(" << name;
+        for (auto& import : project.imports) {
+            if (import == name) {
+                for (auto& source : project.sources) {
+                    out << "\n    " << to_string(source.file);
+                }
+            } else if (std::ranges::any_of(projects, [&](auto* p) { return p->name == import; })) {
+                out << "\n    $<TARGET_OBJECTS:" << import << ">";
+            } else {
+                auto dir = artifacts_dir / import;
+                if (!fs::exists(dir)) continue;
+                auto iter = fs::directory_iterator(dir);
+                for (auto& file : iter) {
+                    if (file.path().extension() == ".obj") {
+                        out << "\n    " << to_string(file.path());
+                    }
+                }
+            }
+        }
+        out << ")\n";
+
+        if (!project.sources.empty()) {
+            out << "target_compile_definitions(" << project.name << " PRIVATE";
+            for (auto& define : project.build_defines) {
+                out << "\n    -D" << to_string(define);
+            }
+            out << ")\n";
+        }
+        out << "target_link_libraries(" << name;
+        // TODO: Libpaths and relative links
+        for (auto& link_glob : project.links) {
+            for (auto& link : resolve_glob(link_glob)) {
+                out << "\n    " << to_string(link);
+            }
+        }
+        out << ")\n";
+        out << "set_target_properties(" << name << " PROPERTIES LINKER_LANGUAGE CXX)\n"; // TODO: C linking?
+        if (!project.shared_libs.empty()) {
+            out << "add_custom_command(TARGET " << name << " POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy\n    -t $<TARGET_FILE_DIR:" << name << ">";
+            for (auto& shared_lib_glob : project.shared_libs) {
+                for (auto& shared_lib : resolve_glob(shared_lib_glob)) {
+                    out << "\n   " << to_string(shared_lib);
+                }
+            }
+            out << ")\n";
+        }
+        auto output_file = artifact.path;
+        output_file.replace_extension(".exe");
+        out << "add_custom_command(TARGET " << name << " POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy\n    $<TARGET_FILE:" << name << ">\n    " << to_string(output_file) << ")\n";
+        if (!project.shared_libs.empty()) {
+            out << "add_custom_command(TARGET " << name << " POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy -t " << to_string(artifact.path.parent_path());
+            for (auto& shared_lib_glob : project.shared_libs) {
+                for (auto& shared_lib : resolve_glob(shared_lib_glob)) {
+                    out << "\n   " << to_string(shared_lib);
+                }
+            }
+            out << ")\n";
+        }
+    }
+}
+
+void configure_cmake_old(project_t& project, flags_t flags)
 {
     (void)flags;
 
@@ -661,10 +789,13 @@ void configure_cmake(project_t& project, flags_t flags)
         out << "    /utf-8\n";
         out << "    )\n";
         out << "\n";
-        for (auto& include : project.includes) {
-            out << "include_directories(" << to_string(include) << ")\n";
+        if (!project.includes.empty()) {
+            out << "include_directories(\n";
+            for (auto& include : project.includes) {
+                out << "    " << to_string(include) << "\n";
+            }
+            out << ")\n\n";
         }
-        out << "\n";
         out << "file(GLOB_RECURSE SENSE_FILES *.cppm *.cxx *.cc *.cpp *.hpp *.c *.h)\n";
         out << "add_library(${PROJECT_NAME} ${SENSE_FILES})\n";
     }
