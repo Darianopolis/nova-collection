@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.27)
+cmake_minimum_required(VERSION 3.26)
 
 project(bldr)
 
@@ -7,14 +7,15 @@ set(CMAKE_CXX_STANDARD_REQUIRED True)
 add_compile_options(
     /Zc:preprocessor
     /Zc:__cplusplus
-    /utf-8)
+    /utf-8
+    /openmp:llvm)
 
 include_directories(
         src
         build/vendor/luajit/src
         build/vendor/sol2/include)
 
-file(GLOB_RECURSE BLDR_SRC_FILES src/*.cpp)
+file(GLOB_RECURSE BLDR_SRC_FILES src/*.cpp src/*.hpp)
 add_executable(${PROJECT_NAME} ${BLDR_SRC_FILES})
 
 target_link_libraries(

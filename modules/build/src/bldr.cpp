@@ -110,7 +110,7 @@ int main(int argc, char* argv[]) try
 
         fs::remove_all(s_paths.environments);
 
-    } else if (args[1] == "make" || args[1] == "ide" || args[1] == "cmake") {
+    } else if (args[1] == "make" || args[1] == "cmake") {
         std::vector<std::string_view> projects;
         flags_t flags{};
         for (uint32_t i = 2; i < args.size(); ++i) {
@@ -119,6 +119,7 @@ int main(int argc, char* argv[]) try
             else if (arg == "-no-warn") flags = flags | flags_t::nowarn;
             else if (arg == "-no-opt")  flags = flags | flags_t::noopt;
             else if (arg == "-trace")   flags = flags | flags_t::trace;
+            else if (arg == "-debug")   flags = flags | flags_t::debug;
             else projects.push_back(arg);
         }
 
@@ -137,12 +138,11 @@ int main(int argc, char* argv[]) try
                 log_debug(" ---- Combined project ----");
                 debug_project(*build);
             }
-            if (args[1] == "make" || args[1] == "cmake") to_build.push_back(build);
-            else if (args[1] == "ide")  configure_ide(*build, flags);
+            to_build.push_back(build);
         }
 
         if (!to_build.empty()) {
-            if (args[1] == "make") build_project(to_build, flags);
+            if      (args[1] == "make")  build_project(to_build, flags);
             else if (args[1] == "cmake") configure_cmake(to_build, flags);
         }
 

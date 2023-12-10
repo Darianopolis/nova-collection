@@ -392,8 +392,11 @@ void build_project(std::span<project_t*> projects, flags_t flags)
         arg(info, "/c");               // Compile without linking
         arg(info, "/nologo");          // Suppress banner
         arg(info, "/arch:AVX2");       // AVX2 vector extensions
-        arg(info, "/MD");              // Use dynamic non-debug CRT. TODO: Parameterize
-        // arg(info, "/MDd");              // Use dynamic debug CRT. TODO: Parameterize
+        if (is_set(flags, flags_t::debug)) {
+            arg(info, "/MDd");              // Use dynamic debug CRT
+        } else {
+            arg(info, "/MD");              // Use dynamic non-debug CRT
+        }
         arg(info, "/Zc:preprocessor"); // Use conforming preprocessor
         arg(info, "/permissive-");     // Disable permissive mode
         // arg(info, "/fp:fast");         // Allow floating point reordering
@@ -406,8 +409,11 @@ void build_project(std::span<project_t*> projects, flags_t flags)
 
         arg(info, "/Z7");
         arg(info, "/DEBUG");
-        // arg(info, "/DDEBUG");
-        // arg(info, "/D_DEBUG");
+
+        if (is_set(flags, flags_t::debug)) {
+            arg(info, "/DDEBUG");
+            arg(info, "/D_DEBUG");
+        }
 
         if (source.type == source_type_t::c) {
             arg(info, "/std:c17");
@@ -463,12 +469,14 @@ void build_project(std::span<project_t*> projects, flags_t flags)
             arg(info, "/INCREMENTAL");    // TODO: Add option for full optimizing link
             arg(info, "/DYNAMICBASE:NO"); // Disable address space layout randomization.
 
-            // arg(info, "/NODEFAULTLIB:msvcrt.lib");
-            arg(info, "/NODEFAULTLIB:msvcrtd.lib");
+            if (is_set(flags, flags_t::debug)) {
+                arg(info, "/NODEFAULTLIB:msvcrt.lib");
+                arg(info, "/DEBUG");
+            } else {
+                arg(info, "/NODEFAULTLIB:msvcrtd.lib");
+            }
             arg(info, "/NODEFAULTLIB:libcmt.lib");
             arg(info, "/NODEFAULTLIB:libcmtd.lib");
-
-            arg(info, "/DEBUG");
 
             // Target
 
@@ -574,75 +582,6 @@ void build_project(std::span<project_t*> projects, flags_t flags)
     }
 }
 
-void configure_vscode(project_t& project, flags_t flags)
-{
-    (void)flags;
-
-    auto vscode_layout = R"(
-{{
-    "configurations": [
-        {{
-            "name": "MSVC",
-            "compilerArgs": [
-                "/Zc:preprocessor",
-                "/std:c++latest",
-                "/Zc:__cplusplus"
-            ],
-            "defines": [{0}
-            ],
-            "forcedInclude": [{1}
-            ],
-            "includePath": [{2}
-            ],
-            "cStandard": "c23",
-            "cppStandard": "c++23",
-            "intelliSenseMode": "windows-msvc-x64",
-            "compilerPath": "{3}"
-        }}
-    ],
-    "version": 4
-}}
-    )"sv;
-
-    auto append_to = [&](std::string& to, const auto& str)
-    {
-        std::stringstream ss;
-        if (to.size()) ss << ",";
-        ss << "\n                ";
-        ss << '"' << str << '"';
-        to.append(ss.str());
-    };
-
-    std::string defines;
-    append_to(defines, "WIN32");
-    append_to(defines, "UNICODE");
-    append_to(defines, "_UNICODE");
-    for (auto& define : project.build_defines) append_to(defines, to_string(define));
-
-    std::string force_includes;
-    for (auto& include : project.force_includes) append_to(force_includes, to_string(include));
-
-    std::string includes;
-    for (auto& include : project.includes) append_to(includes, to_string(include));
-
-    std::string compiler_path;
-    {
-        const auto& env = get_build_environment();
-        auto tools_ver = env.find("VCToolsVersion=");
-        if (tools_ver != std::string::npos) {
-            compiler_path = std::format(
-                "C:/Program Files/Microsoft Visual Studio/2022/Community/VC/Tools/MSVC/{}/bin/Hostx64/x64/cl.exe",
-                env.c_str() + tools_ver + 15);
-        }
-    }
-
-    {
-        fs::create_directories(fs::path(".vscode"));
-        std::ofstream vscode_out(fs::path(".vscode/c_cpp_properties.json"), std::ios::binary);
-        vscode_out << std::vformat(vscode_layout, std::make_format_args(defines, force_includes, includes, compiler_path));
-    }
-}
-
 void configure_cmake(std::span<project_t*> projects, flags_t flags)
 {
     auto artifacts_dir = s_paths.artifacts;
@@ -669,16 +608,23 @@ void configure_cmake(std::span<project_t*> projects, flags_t flags)
     out << "set(CMAKE_CXX_STANDARD 23)\n";
     out << "set(CMAKE_CXX_STANDARD_REQUIRED True)\n";
     out << "add_compile_options(\n";
-    out << "    /Zc:preprocessor\n";
-    out << "    /Zc:__cplusplus\n";
-    out << "    /utf-8)\n";
-    out << "include_directories(";
-    for (auto& project : projects) {
-        for (auto& include : project->includes) {
-            out << "\n    " << to_string(include);
+    out << "        /Zc:preprocessor\n";
+    out << "        /Zc:__cplusplus\n";
+    out << "        /utf-8)\n";
+
+    auto add_defines_and_includes = [&](project_t& project) {
+        out << "target_compile_definitions(" << project.name << " PRIVATE";
+        for (auto& define : project.build_defines) {
+            out << "\n        -D" << to_string(define);
         }
-    }
-    out << ")\n";
+        out << ")\n";
+
+        out << "target_include_directories(" << project.name << " PRIVATE";
+        for (auto& include : project.includes) {
+            out << "\n        " << to_string(include);
+        }
+        out << ")\n";
+    };
 
     for (int32_t i = 0; i < projects.size(); ++i) {
         auto& project = *projects[i];
@@ -687,15 +633,10 @@ void configure_cmake(std::span<project_t*> projects, flags_t flags)
         if (!project.sources.empty()) {
             out << "add_library(" << project.name << " OBJECT";
             for (auto& source : project.sources) {
-                out << "\n    " << to_string(source.file);
+                out << "\n        " << to_string(source.file);
             }
             out << ")\n";
-
-            out << "target_compile_definitions(" << project.name << " PRIVATE";
-            for (auto& define : project.build_defines) {
-                out << "\n    -D" << to_string(define);
-            }
-            out << ")\n";
+            add_defines_and_includes(project);
         }
     }
 
@@ -712,17 +653,17 @@ void configure_cmake(std::span<project_t*> projects, flags_t flags)
         for (auto& import : project.imports) {
             if (import == name) {
                 for (auto& source : project.sources) {
-                    out << "\n    " << to_string(source.file);
+                    out << "\n        " << to_string(source.file);
                 }
             } else if (std::ranges::any_of(projects, [&](auto* p) { return p->name == import; })) {
-                out << "\n    $<TARGET_OBJECTS:" << import << ">";
+                out << "\n        $<TARGET_OBJECTS:" << import << ">";
             } else {
                 auto dir = artifacts_dir / import;
                 if (!fs::exists(dir)) continue;
                 auto iter = fs::directory_iterator(dir);
                 for (auto& file : iter) {
                     if (file.path().extension() == ".obj") {
-                        out << "\n    " << to_string(file.path());
+                        out << "\n        " << to_string(file.path());
                     }
                 }
             }
@@ -730,79 +671,37 @@ void configure_cmake(std::span<project_t*> projects, flags_t flags)
         out << ")\n";
 
         if (!project.sources.empty()) {
-            out << "target_compile_definitions(" << project.name << " PRIVATE";
-            for (auto& define : project.build_defines) {
-                out << "\n    -D" << to_string(define);
-            }
-            out << ")\n";
+            add_defines_and_includes(project);
         }
         out << "target_link_libraries(" << name;
         // TODO: Libpaths and relative links
         for (auto& link_glob : project.links) {
             for (auto& link : resolve_glob(link_glob)) {
-                out << "\n    " << to_string(link);
+                out << "\n        " << to_string(link);
             }
         }
         out << ")\n";
         out << "set_target_properties(" << name << " PROPERTIES LINKER_LANGUAGE CXX)\n"; // TODO: C linking?
         if (!project.shared_libs.empty()) {
-            out << "add_custom_command(TARGET " << name << " POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy\n    -t $<TARGET_FILE_DIR:" << name << ">";
+            out << "add_custom_command(TARGET " << name << " POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy -t $<TARGET_FILE_DIR:" << name << ">";
             for (auto& shared_lib_glob : project.shared_libs) {
                 for (auto& shared_lib : resolve_glob(shared_lib_glob)) {
-                    out << "\n   " << to_string(shared_lib);
+                    out << "\n        " << to_string(shared_lib);
                 }
             }
             out << ")\n";
         }
         auto output_file = artifact.path;
         output_file.replace_extension(".exe");
-        out << "add_custom_command(TARGET " << name << " POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy\n    $<TARGET_FILE:" << name << ">\n    " << to_string(output_file) << ")\n";
+        out << "add_custom_command(TARGET " << name << " POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:" << name << ">\n        " << to_string(output_file) << ")\n";
         if (!project.shared_libs.empty()) {
             out << "add_custom_command(TARGET " << name << " POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy -t " << to_string(artifact.path.parent_path());
             for (auto& shared_lib_glob : project.shared_libs) {
                 for (auto& shared_lib : resolve_glob(shared_lib_glob)) {
-                    out << "\n   " << to_string(shared_lib);
+                    out << "\n        " << to_string(shared_lib);
                 }
             }
             out << ")\n";
         }
     }
-}
-
-void configure_cmake_old(project_t& project, flags_t flags)
-{
-    (void)flags;
-
-    {
-        std::ofstream out(fs::path("CMakeLists.txt"), std::ios::binary);
-
-        out << "cmake_minimum_required(VERSION 3.27)\n";
-        out << "\n";
-        out << "project(" << project.name << ")\n";
-        out << "\n";
-        out << "set(CMAKE_CXX_STANDARD 23)\n";
-        out << "set(CMAKE_CXX_STANDARD_REQUIRED True)\n";
-        out << "\n";
-        out << "add_compile_options(\n";
-        out << "    /Zc:preprocessor\n";
-        out << "    /Zc:__cplusplus\n";
-        out << "    /utf-8\n";
-        out << "    )\n";
-        out << "\n";
-        if (!project.includes.empty()) {
-            out << "include_directories(\n";
-            for (auto& include : project.includes) {
-                out << "    " << to_string(include) << "\n";
-            }
-            out << ")\n\n";
-        }
-        out << "file(GLOB_RECURSE SENSE_FILES *.cppm *.cxx *.cc *.cpp *.hpp *.c *.h)\n";
-        out << "add_library(${PROJECT_NAME} ${SENSE_FILES})\n";
-    }
-}
-
-void configure_ide(project_t& project, flags_t flags)
-{
-    configure_vscode(project, flags);
-    // configure_cmake(project, flags);
 }
