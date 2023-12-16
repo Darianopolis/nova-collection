@@ -469,9 +469,10 @@ void build_project(std::span<project_t*> projects, flags_t flags)
             arg(info, "/INCREMENTAL");    // TODO: Add option for full optimizing link
             arg(info, "/DYNAMICBASE:NO"); // Disable address space layout randomization.
 
+            arg(info, "/DEBUG");
+
             if (is_set(flags, flags_t::debug)) {
                 arg(info, "/NODEFAULTLIB:msvcrt.lib");
-                arg(info, "/DEBUG");
             } else {
                 arg(info, "/NODEFAULTLIB:msvcrtd.lib");
             }

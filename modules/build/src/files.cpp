@@ -22,8 +22,10 @@ std::vector<fs::path> resolve_glob(fs::path path)
                 out.push_back(std::move(entry.path()));
             }
         };
-        if (i1 == i2) iterate(fs::directory_iterator(path.parent_path()));
-        else          iterate(fs::recursive_directory_iterator(path.parent_path()));
+        if (fs::exists(path.parent_path())) {
+            if (i1 == i2) iterate(fs::directory_iterator(path.parent_path()));
+            else          iterate(fs::recursive_directory_iterator(path.parent_path()));
+        }
     }
 
     return out;

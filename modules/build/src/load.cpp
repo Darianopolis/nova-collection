@@ -100,7 +100,9 @@ void populate_artifactory_from_file(project_artifactory_t& artifactory, const fs
         auto values = get_values(obj);
         for (auto& value : values.values) {
             auto path = project->dir / value;
-            if (fs::is_directory(path)) {
+            if (!fs::exists(path)) {
+                log_warn("Include path not found: {}", path.string());
+            } else if (fs::is_directory(path)) {
                 project->includes.push_back(project->dir / value);
             } else {
                 project->force_includes.push_back(value);
