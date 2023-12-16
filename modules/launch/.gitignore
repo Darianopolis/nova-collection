@@ -1,7 +1,11 @@
 .vscode
 .VSCodeCounter
+.bldr/
+.idea/
 build
 out
+cmake-build-*/
+CMakeLists.txt
 imgui.ini
 index.txt
 index.dat

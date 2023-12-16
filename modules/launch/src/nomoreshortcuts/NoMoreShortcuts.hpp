@@ -11,14 +11,14 @@ class App
 public:
     nova::Context context;
     nova::Queue queue;
-    std::unique_ptr<nova::ImDraw2D> imDraw;
+    std::unique_ptr<nova::draw::Draw2D> imDraw;
 
     nova::Swapchain swapchain = {};
     nova::CommandPool commandPool = {};
     nova::Fence fence = {};
 
-    std::unique_ptr<nova::ImFont> font = {};
-    std::unique_ptr<nova::ImFont> fontSmall = {};
+    std::unique_ptr<nova::draw::Font> font = {};
+    std::unique_ptr<nova::draw::Font> fontSmall = {};
 
     GLFWwindow* window = {};
     i32 mWidth, mHeight;
@@ -38,7 +38,7 @@ public:
 
     struct IconResult
     {
-        nova::Texture texture = {};
+        nova::Image texture = {};
     };
 
     ankerl::unordered_dense::map<std::filesystem::path, IconResult> iconCache;

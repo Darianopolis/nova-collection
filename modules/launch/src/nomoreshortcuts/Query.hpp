@@ -1,6 +1,8 @@
 #pragma once
 
 #include <nova/core/nova_Core.hpp>
+#include <nova/core/nova_Stack.hpp>
+
 #include <nova/db/nova_Sqlite.hpp>
 
 #include <file_searcher.hpp>
@@ -17,9 +19,9 @@ public:
 class ResultList
 {
 public:
-    void Filter(nova::Span<std::string> query)
+    void FilterStrings(nova::Span<std::string> query)
     {
-        auto view = NOVA_ALLOC_STACK(std::string_view, query.size());
+        auto view = NOVA_STACK_ALLOC(std::string_view, query.size());
         u32 count = 0;
         for (u32 i = 0; i < query.size(); ++i) {
             if (query[i].size()) {

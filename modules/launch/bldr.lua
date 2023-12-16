@@ -5,7 +5,7 @@ if Project "nms" then
     }
     Import {
         "nova",
-        "stb",
+        "glfw",
         "index",
     }
 end

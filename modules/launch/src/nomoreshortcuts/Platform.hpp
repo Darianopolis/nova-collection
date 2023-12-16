@@ -3,8 +3,12 @@
 #include <nova/rhi/nova_RHI.hpp>
 #include <nova/core/nova_Timer.hpp>
 
-#include <nova/ui/nova_ImDraw2D.hpp>
+#include <nova/ui/nova_Draw2D.hpp>
 
+#define UNICODE
+#define _UNICODE
+#define NOMINMAX
+#define WIN32_LEAN_AND_MEAN
 #ifndef GLFW_EXPOSE_NATIVE_WIN32
 #  define GLFW_EXPOSE_NATIVE_WIN32
 #endif
@@ -38,7 +42,7 @@ namespace nms
         return str;
     }
 
-    nova::Texture LoadIconFromPath(
+    nova::Image LoadIconFromPath(
         nova::Context context,
         std::string_view path);
 

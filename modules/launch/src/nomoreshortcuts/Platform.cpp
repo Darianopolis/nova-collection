@@ -1,5 +1,8 @@
 #include "Platform.hpp"
 
+#include <nova/core/nova_Guards.hpp>
+#include <nova/core/nova_Stack.hpp>
+
 namespace nms
 {
     void ConvertToWString(std::string_view input, std::wstring& output)
@@ -22,7 +25,7 @@ namespace nms
     {
         IWICImagingFactory* wic;
 
-        ankerl::unordered_dense::map<u64, nova::Texture> imageCache;
+        ankerl::unordered_dense::map<u64, nova::Image> imageCache;
 
         ComState()
         {
@@ -50,14 +53,14 @@ namespace nms
         NmsComState.imageCache.clear();
     }
 
-    nova::Texture LoadIconFromPath(
+    nova::Image LoadIconFromPath(
         nova::Context context,
         std::string_view path)
     {
         // Query shell for path icon
 
         HICON icon = {};
-        NOVA_CLEANUP(&) { DestroyIcon(icon); };
+        NOVA_DEFER(&) { DestroyIcon(icon); };
 
         SHFILEINFO info = {};
 
@@ -88,14 +91,14 @@ namespace nms
 
         IWICBitmap* bitmap = nullptr;
         NmsComState.wic->CreateBitmapFromHICON(icon, &bitmap);
-        NOVA_CLEANUP(&) { bitmap->Release(); };
+        NOVA_DEFER(&) { bitmap->Release(); };
 
         u32 width, height;
         bitmap->GetSize(&width, &height);
 
         IWICFormatConverter* converter = nullptr;
         NmsComState.wic->CreateFormatConverter(&converter);
-        NOVA_CLEANUP(&) { converter->Release(); };
+        NOVA_DEFER(&) { converter->Release(); };
         converter->Initialize(
             bitmap,
             GUID_WICPixelFormat32bppRGBA,
@@ -104,7 +107,7 @@ namespace nms
             WICBitmapPaletteTypeMedianCut);
 
         usz dataSize = width * height * 4;
-        auto pixelData = NOVA_ALLOC_STACK(BYTE, dataSize);
+        auto pixelData = NOVA_STACK_ALLOC(BYTE, dataSize);
         converter->CopyPixels(nullptr, width * 4, UINT(dataSize), pixelData);
 
         // Hash and check to find matching existing image
@@ -117,12 +120,12 @@ namespace nms
         NOVA_LOG("Loading icon {}, size = ({}, {})", path, width, height);
         NOVA_LOG("  Num images = {}", NmsComState.imageCache.size());
 
-        texture = nova::Texture::Create(context, Vec3U(width, height, 0),
-            nova::TextureUsage::Sampled,
+        texture = nova::Image::Create(context, Vec3U(width, height, 0),
+            nova::ImageUsage::Sampled,
             nova::Format::RGBA8_UNorm);
 
         texture.Set({}, texture.GetExtent(), pixelData);
-        texture.Transition(nova::TextureLayout::Sampled);
+        texture.Transition(nova::ImageLayout::Sampled);
 
         return texture;
     }

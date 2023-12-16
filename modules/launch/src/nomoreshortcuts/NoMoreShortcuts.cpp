@@ -1,5 +1,7 @@
 #include "NoMoreShortcuts.hpp"
 
+#include <nova/core/nova_Guards.hpp>
+
 #include <stb_image.h>
 
 #include <imgui.h>
@@ -24,7 +26,7 @@ App::App()
 
     context = nova::Context::Create({ .debug = true });
     queue = context.GetQueue(nova::QueueFlags::Graphics, 0);
-    imDraw = std::make_unique<nova::ImDraw2D>(context);
+    imDraw = std::make_unique<nova::draw::Draw2D>(context);
 
     std::filesystem::create_directories(std::filesystem::path(indexFile).parent_path());
 
@@ -37,14 +39,14 @@ NOVA_DEBUG();
 
         i32 channels;
         iconImage.pixels = stbi_load("favicon.png", &iconImage.width, &iconImage.height, &channels, STBI_rgb_alpha);
-        NOVA_CLEANUP(&) { stbi_image_free(iconImage.pixels); };
+        NOVA_DEFER(&) { stbi_image_free(iconImage.pixels); };
 
         glfwSetWindowIcon(window, 1, &iconImage);
     }
 
     swapchain = nova::Swapchain::Create(context, glfwGetWin32Window(window),
-        nova::TextureUsage::TransferDst
-        | nova::TextureUsage::ColorAttach,
+        nova::ImageUsage::TransferDst
+        | nova::ImageUsage::ColorAttach,
         nova::PresentMode::Fifo);
 
     commandPool = nova::CommandPool::Create(context, queue);
@@ -136,7 +138,7 @@ void App::ResetQuery()
     keywords.emplace_back();
     // tree.setMatchBits(1, 1, 0, 0);
     // tree.matchBits = 1;
-    resultList->Filter(keywords);
+    resultList->FilterStrings(keywords);
     UpdateQuery();
 }
 
@@ -278,12 +280,12 @@ void App::Draw()
     // Input box
 
     imDraw->DrawRect({
-        .centerColor = backgroundColor,
-        .borderColor = borderColor,
-        .centerPos = pos - Vec2(0.f, hInputSize.y),
-        .halfExtent = hInputSize + Vec2(borderWidth),
-        .cornerRadius = cornerRadius,
-        .borderWidth = borderWidth,
+        .center_color = backgroundColor,
+        .border_color = borderColor,
+        .center_pos = pos - Vec2(0.f, hInputSize.y),
+        .half_extent = hInputSize + Vec2(borderWidth),
+        .corner_radius = cornerRadius,
+        .border_width = borderWidth,
     });
 
     // Input text
@@ -306,23 +308,23 @@ void App::Draw()
     // Output box
 
     imDraw->DrawRect({
-        .centerColor = backgroundColor,
-        .borderColor = borderColor,
-        .centerPos = pos + Vec2(0.f, hOutputHeight + margin + borderWidth),
-        .halfExtent = Vec2(hOutputWidth, hOutputHeight) + Vec2(borderWidth),
-        .cornerRadius = cornerRadius,
-        .borderWidth = borderWidth,
+        .center_color = backgroundColor,
+        .border_color = borderColor,
+        .center_pos = pos + Vec2(0.f, hOutputHeight + margin + borderWidth),
+        .half_extent = Vec2(hOutputWidth, hOutputHeight) + Vec2(borderWidth),
+        .corner_radius = cornerRadius,
+        .border_width = borderWidth,
     });
 
     // Highlight
 
     imDraw->DrawRect({
-        .centerColor = highlightColor,
-        .centerPos = pos
+        .center_color = highlightColor,
+        .center_pos = pos
             + Vec2(0.f, margin + borderWidth + outputItemHeight * (0.5f + selection)),
-        .halfExtent = Vec2(hOutputWidth, outputItemHeight * 0.5f)
+        .half_extent = Vec2(hOutputWidth, outputItemHeight * 0.5f)
             - Vec2(2.f),
-        .cornerRadius = cornerRadius - borderWidth - 2.f,
+        .corner_radius = cornerRadius - borderWidth - 2.f,
     });
 
     for (u32 i = 0; i < outputCount; ++i)
@@ -346,15 +348,15 @@ void App::Draw()
         if (icon->texture)
         {
             imDraw->DrawRect({
-                .centerPos = pos
+                .center_pos = pos
                     + Vec2(-hOutputWidth + (iconSize / 2.f) + iconPadding,
                         margin + borderWidth + outputItemHeight * (0.5f + i)),
-                .halfExtent = Vec2(iconSize) / 2.f,
+                .half_extent = Vec2(iconSize) / 2.f,
 
-                .texTint = Vec4(1.f),
-                .texIndex = icon->texture.GetDescriptor(),
-                .texCenterPos = { 0.5f, 0.5f },
-                .texHalfExtent = { 0.5f, 0.5f },
+                .tex_tint = Vec4(1.f),
+                .tex_idx = icon->texture.GetDescriptor(),
+                .tex_center_pos = { 0.5f, 0.5f },
+                .tex_half_extent = { 0.5f, 0.5f },
             });
         }
 
@@ -475,7 +477,7 @@ void App::OnChar(u32 codepoint)
         if (c < ' ' || c > '~')
             return;
         keyword += c;
-        resultList->Filter(keywords);
+        resultList->FilterStrings(keywords);
     }
     UpdateQuery();
 }
@@ -490,7 +492,7 @@ void App::UpdateIndex()
         save_index(index, indexFile.c_str());
     }
     searcher.set_index(index);
-    fileResultList->Filter(keywords);
+    fileResultList->FilterStrings(keywords);
 }
 
 void App::OnKey(u32 key, i32 action, i32 mods)
@@ -550,7 +552,7 @@ void App::OnKey(u32 key, i32 action, i32 mods)
             {
                 keyword.pop_back();
                 // filter(matchBit, keyword, false);
-                resultList->Filter(keywords);
+                resultList->FilterStrings(keywords);
                 UpdateQuery();
             }
             else if (keywords.size() > 1)
@@ -558,7 +560,7 @@ void App::OnKey(u32 key, i32 action, i32 mods)
                 keywords.pop_back();
                 // tree.setMatchBits(matchBit, 0, matchBit, 0);
                 // tree.matchBits &= ~matchBit;
-                resultList->Filter(keywords);
+                resultList->FilterStrings(keywords);
                 UpdateQuery();
             }
         }
