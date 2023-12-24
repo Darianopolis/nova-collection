@@ -48,6 +48,8 @@ public:
     bool show;
     bool running = true;
 
+    float ui_scale = 1.f;
+
     i32 updates = 0;
     std::chrono::time_point<std::chrono::steady_clock> last_update;
 

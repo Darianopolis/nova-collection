@@ -124,7 +124,7 @@ namespace nms
             nova::ImageUsage::Sampled,
             nova::Format::RGBA8_UNorm);
 
-        texture.Set({}, texture.GetExtent(), pixelData);
+        texture.Set({}, texture.Extent(), pixelData);
         texture.Transition(nova::ImageLayout::Sampled);
 
         return texture;

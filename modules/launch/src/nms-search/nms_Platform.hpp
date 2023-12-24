@@ -5,13 +5,21 @@
 
 #include <nova/ui/nova_Draw2D.hpp>
 
+#undef UNICODE
 #define UNICODE
+
+#undef _UNICODE
 #define _UNICODE
+
+#undef NOMINMAX
 #define NOMINMAX
+
+#undef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
-#ifndef GLFW_EXPOSE_NATIVE_WIN32
-#  define GLFW_EXPOSE_NATIVE_WIN32
-#endif
+
+#undef GLFW_EXPOSE_NATIVE_WIN32
+#define GLFW_EXPOSE_NATIVE_WIN32
+
 #include <GLFW/glfw3.h>
 #include <GLFW/glfw3native.h>
 

@@ -25,7 +25,7 @@ App::App()
     SetLayeredWindowAttributes(hwnd, RGB(0, 1, 0), 0, LWA_COLORKEY);
 
     context = nova::Context::Create({ .debug = false });
-    queue = context.GetQueue(nova::QueueFlags::Graphics, 0);
+    queue = context.Queue(nova::QueueFlags::Graphics, 0);
     imDraw = std::make_unique<nova::draw::Draw2D>(context);
 
     {
@@ -39,7 +39,7 @@ App::App()
     std::filesystem::create_directories(std::filesystem::path(indexFile).parent_path());
 
 NOVA_DEBUG();
-    searcher.init(context, context.GetQueue(nova::QueueFlags::Compute, 0));
+    searcher.init(context, context.Queue(nova::QueueFlags::Compute, 0));
 NOVA_DEBUG();
 
     {
@@ -69,8 +69,8 @@ NOVA_DEBUG();
 
 // -----------------------------------------------------------------------------
 
-    font = imDraw->LoadFont("SEGUISB.TTF", 35.f);
-    fontSmall = imDraw->LoadFont("SEGOEUI.TTF", 18.f);
+    font = imDraw->LoadFont("SEGUISB.TTF", 35.f * ui_scale);
+    fontSmall = imDraw->LoadFont("SEGOEUI.TTF", 18.f * ui_scale);
 
 // -----------------------------------------------------------------------------
 
@@ -266,24 +266,28 @@ void App::Draw()
 
     Vec2 pos = { mWidth * 0.5f, mHeight * 0.5f };
 
-    Vec2 hInputSize = { 960.f, 29.f };
+    Vec2 hInputSize = Vec2 { 960.f, 29.f } * ui_scale;
 
-    f32 outputItemHeight = 76.f;
+    f32 outputItemHeight = 76.f * ui_scale;
     u32 outputCount = u32(items.size());
 
-    f32 hOutputWidth = 600.f;
+    f32 hOutputWidth = 600.f * ui_scale;
     f32 hOutputHeight = 0.5f * outputItemHeight * outputCount;
 
-    f32 margin = 18.f;
+    f32 margin = 18.f * ui_scale;
 
-    f32 cornerRadius = 18.f;
-    f32 borderWidth = 2.f;
+    f32 cornerRadius = 18.f * ui_scale;
+    f32 borderWidth = 2.f * ui_scale;
 
-    Vec2 textInset = { 74.5f, 37.f };
-    Vec2 textSmallInset = { 76.f, 60.f };
+    Vec2 textInset = Vec2 { 74.5f, 37.f } * ui_scale;
+    Vec2 textSmallInset = Vec2 { 76.f, 60.f } * ui_scale;
 
-    f32 iconSize = 50;
+    f32 iconSize = 50 * ui_scale;
     f32 iconPadding = (outputItemHeight - iconSize) / 2.f;
+
+    f32 inputTextVOffset = 17.f * ui_scale;
+
+    f32 highlightInset = 2.f * ui_scale;
 
     // Input box
 
@@ -305,7 +309,7 @@ void App::Draw()
         if (!bounds.Empty())
         {
             imDraw->DrawString(query,
-                pos - Vec2(bounds.Width() / 2.f, 17.f),
+                pos - Vec2(bounds.Width() * 0.5f, inputTextVOffset),
                 *font);
         }
     }
@@ -329,10 +333,10 @@ void App::Draw()
     imDraw->DrawRect({
         .center_color = highlightColor,
         .center_pos = pos
-            + Vec2(0.f, margin + borderWidth + outputItemHeight * (0.5f + selection)),
+            + Vec2(0.f, margin + borderWidth + outputItemHeight * (0.5f + f32(selection))),
         .half_extent = Vec2(hOutputWidth, outputItemHeight * 0.5f)
-            - Vec2(2.f),
-        .corner_radius = cornerRadius - borderWidth - 2.f,
+            - Vec2(highlightInset),
+        .corner_radius = cornerRadius - borderWidth - highlightInset,
     });
 
     for (u32 i = 0; i < outputCount; ++i)
@@ -358,11 +362,11 @@ void App::Draw()
             imDraw->DrawRect({
                 .center_pos = pos
                     + Vec2(-hOutputWidth + (iconSize / 2.f) + iconPadding,
-                        margin + borderWidth + outputItemHeight * (0.5f + i)),
+                        margin + borderWidth + outputItemHeight * (0.5f + f32(i))),
                 .half_extent = Vec2(iconSize) / 2.f,
 
                 .tex_tint = Vec4(1.f),
-                .tex_idx = icon->texture.GetDescriptor(),
+                .tex_idx = icon->texture.Descriptor(),
                 .tex_center_pos = { 0.5f, 0.5f },
                 .tex_half_extent = { 0.5f, 0.5f },
             });
@@ -375,7 +379,7 @@ void App::Draw()
                 ? path.string()
                 : path.filename().string(),
             pos + Vec2(-hOutputWidth, margin + borderWidth)
-                + Vec2(0.f, outputItemHeight * i)
+                + Vec2(0.f, outputItemHeight * f32(i))
                 + textInset,
             *font);
 
@@ -386,7 +390,7 @@ void App::Draw()
                 ? path.parent_path().string()
                 : path.string(),
             pos + Vec2(-hOutputWidth, margin + borderWidth)
-                + Vec2(0.f, outputItemHeight * i)
+                + Vec2(0.f, outputItemHeight * f32(i))
                 + textSmallInset,
             *fontSmall);
     }
@@ -444,13 +448,13 @@ void App::Run()
 
             // Update window size, record primary buffer and present
 
-            glfwSetWindowSize(window, i32(imDraw->GetBounds().Width()), i32(imDraw->GetBounds().Height()));
-            glfwSetWindowPos(window, i32(imDraw->GetBounds().min.x), i32(imDraw->GetBounds().min.y));
+            glfwSetWindowSize(window, i32(imDraw->Bounds().Width()), i32(imDraw->Bounds().Height()));
+            glfwSetWindowPos(window, i32(imDraw->Bounds().min.x), i32(imDraw->Bounds().min.y));
 
             queue.Acquire({swapchain}, {fence});
 
-            cmd.ClearColor(swapchain.GetCurrent(), Vec4(0.f, 1/255.f, 0.f, 0.f));
-            imDraw->Record(cmd, swapchain.GetCurrent());
+            cmd.ClearColor(swapchain.Target(), Vec4(0.f, 1/255.f, 0.f, 0.f));
+            imDraw->Record(cmd, swapchain.Target());
 
             cmd.Present(swapchain);
 
