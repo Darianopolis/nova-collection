@@ -1,21 +1,22 @@
-if Project "nms" then
-    Compile { "src/**" }
-    Include {
-        "src/nomoreshortcuts",
-    }
+if Project "nms-search" then
+    Compile { "src/nms-search/**" }
+    Include "src"
     Import {
         "nova",
         "glfw",
         "index",
     }
+    Artifact { "out/nms-search", type = "Window" }
 end
 
-if Project "nms-cli" then
-    Import "nms"
-    Artifact { "out/nms", type = "Console" }
+if Project "nms-index" then
+    Compile "src/nms-index/**"
+    Import { "nova", "index" }
+    Artifact { "out/nms-index", type = "Console" }
 end
 
-if Project "nms-app" then
-    Import "nms"
-    Artifact { "out/NoMoreShortcuts", type = "Window" }
+if Project "nms-launch" then
+    Compile "src/nms-launch/**"
+    Import { "nova" }
+    Artifact { "out/nms-launch", type = "Window" }
 end

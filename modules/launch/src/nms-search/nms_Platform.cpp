@@ -1,4 +1,4 @@
-#include "Platform.hpp"
+#include "nms_Platform.hpp"
 
 #include <nova/core/nova_Guards.hpp>
 #include <nova/core/nova_Stack.hpp>

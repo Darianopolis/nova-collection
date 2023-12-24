@@ -1,4 +1,4 @@
-#include "NoMoreShortcuts.hpp"
+#include "nms_Search.hpp"
 
 #include <nova/core/nova_Guards.hpp>
 
@@ -24,9 +24,17 @@ App::App()
     //   apply chroma key based on alpha.
     SetLayeredWindowAttributes(hwnd, RGB(0, 1, 0), 0, LWA_COLORKEY);
 
-    context = nova::Context::Create({ .debug = true });
+    context = nova::Context::Create({ .debug = false });
     queue = context.GetQueue(nova::QueueFlags::Graphics, 0);
     imDraw = std::make_unique<nova::draw::Draw2D>(context);
+
+    {
+        char module_filename[4096];
+        GetModuleFileNameA(nullptr, module_filename, sizeof(module_filename));
+        NOVA_LOG("Module filename: {}", module_filename);
+        exe_dir = std::filesystem::path(module_filename).parent_path();
+        NOVA_LOG(" exe dir: {}", exe_dir.string());
+    }
 
     std::filesystem::create_directories(std::filesystem::path(indexFile).parent_path());
 
@@ -521,15 +529,35 @@ void App::OnKey(u32 key, i32 action, i32 mods)
             auto str = view->GetPath().string();
             NOVA_LOG("Running {}!", str);
 
+            NOVA_STACK_POINT();
+
             favResultList->IncrementUses(view->GetPath());
             ResetQuery();
             show = false;
 
             if ((GetKeyState(VK_LSHIFT) & 0x8000)
-                && (GetKeyState(VK_LCONTROL) & 0x8000)) {
-                ShellExecuteA(nullptr, "runas", str.c_str(), nullptr, nullptr, SW_SHOW);
+            && (GetKeyState(VK_LCONTROL) & 0x8000)) {
+                ShellExecuteA(
+                    nullptr,
+                    "open",
+                    (exe_dir / "nms-launch.exe").string().c_str(),
+                    NOVA_STACK_FORMAT("runas \"{}\"", str.c_str()).data(),
+                    nullptr,
+                    SW_SHOW);
+            } else if (GetKeyState(VK_LCONTROL) & 0x8000) {
+                // open selected in explorer
+                std::system(
+                    NOVA_STACK_FORMAT("explorer /select, \"{}\"", str.c_str()).data());
             } else {
-                ShellExecuteA(nullptr, "open", str.c_str(), nullptr, nullptr, SW_SHOW);
+                // open
+                auto params = NOVA_STACK_FORMAT("open \"{}\"", str.c_str());
+                ShellExecuteA(
+                    nullptr,
+                    "open",
+                    (exe_dir / "nms-launch.exe").string().c_str(),
+                    params.data(),
+                    nullptr,
+                    SW_SHOW);
             }
         }
     }
@@ -586,30 +614,7 @@ void App::OnKey(u32 key, i32 action, i32 mods)
     break;case GLFW_KEY_F5:
         if (mods & GLFW_MOD_CONTROL)
         {
-            static std::atomic_bool indexing = false;
-
-            bool expected = false;
-            if (indexing.compare_exchange_strong(expected, true))
-            {
-                std::thread t([=, this] {
-                    AllocConsole();
-                    freopen("CONOUT$", "w", stdout);
-
-                    index_filesystem(index);
-                    NOVA_LOG("Sorting...");
-                    sort_index(index);
-                    NOVA_LOG("Saving...");
-                    save_index(index, indexFile.c_str());
-                    UpdateIndex();
-
-                    NOVA_LOG("Indexing complete. Close this window and refresh the index with F5 in app.");
-                    FreeConsole();
-
-                    indexing = false;
-                });
-
-                t.detach();
-            }
+            ::ShellExecuteA(nullptr, "open", (exe_dir / "nms-index.exe").string().c_str(), nullptr, nullptr, SW_SHOW);
         }
         else
         {
@@ -639,7 +644,7 @@ void Main()
         App app;
         app.Run();
     }
-    catch (std::exception& e)
+    catch (const std::exception& e)
     {
         NOVA_LOG("Error: {}", e.what());
     }

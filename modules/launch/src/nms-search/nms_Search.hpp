@@ -1,8 +1,8 @@
 #pragma once
 
-#include "Query.hpp"
+#include "nms_Query.hpp"
 
-#include <Platform.hpp>
+#include "nms_Platform.hpp"
 
 using namespace nova::types;
 
@@ -27,6 +27,8 @@ public:
 
     std::vector<std::unique_ptr<ResultItem>> items;
     u32 selection;
+
+    std::filesystem::path exe_dir;
 
     std::string indexFile = std::format("{}\\.nms\\index.bin", getenv("USERPROFILE"));
     index_t index;
