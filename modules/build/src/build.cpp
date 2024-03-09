@@ -7,6 +7,7 @@
 #include <fstream>
 #include <algorithm>
 #include <regex>
+#include <ranges>
 
 #define NOMINMAX
 #define WIN32_LEAN_AND_MEAN
@@ -416,7 +417,7 @@ void build_project(std::span<project_t*> projects, flags_t flags)
         }
 
         if (source.type == source_type_t::c) {
-            arg(info, "/std:c17");
+            arg(info, "/std:c23");
             arg(info, "/Tc", source.file.string());
         } else {
             arg(info, "/EHsc");           // Full exception unwinding
@@ -583,6 +584,119 @@ void build_project(std::span<project_t*> projects, flags_t flags)
     }
 }
 
+void configure_vscode(std::span<project_t*> projects, flags_t flags)
+{
+    auto c_cpp_properties_path = fs::path(".vscode/c_cpp_properties.json");
+    fs::create_directories(c_cpp_properties_path.parent_path());
+
+    std::ofstream out(c_cpp_properties_path, std::ios::binary);
+
+    log_info("Configuring VSCode C/C++ build for MS and clangd extensions");
+
+    // TODO: Create small JSON writer
+
+    out << "{\n";
+    out << "    \"configurations\": [\n";
+    out << "        {\n";
+    out << "            \"name\": \"MSVC\",\n";
+
+    // Compiler args
+
+    out << "            \"compilerArgs\": [\n";
+    out << "                \"/Zc:preprocessor\",\n";
+    out << "                \"/Zc:__cplusplus\",\n";
+    out << "                \"/utf-8\"\n";
+    // TODO: Modules
+    out << "            ],\n";
+
+    // Defines
+
+    auto defined = std::unordered_set<std::string>();
+    defined.insert("WIN32");
+    defined.insert("UNICODE");
+    defined.insert("_UNICODE");
+    for (int32_t i = 0; i < projects.size(); ++i) {
+        auto& project = *projects[i];
+
+        for (auto& define : project.build_defines) {
+            if (!define.value.empty()) {
+                defined.insert(std::format("{}={}", define.key, define.value));
+            } else {
+                defined.insert(define.key);
+            }
+        }
+    }
+    out << "            \"defines\": [";
+    for (auto[i, define] : defined | std::views::enumerate) {
+        if (i > 0) out << ",";
+        out << "\n                \"" << define << "\"";
+    }
+    out << "\n            ],\n";
+
+    // Force includes
+
+    auto force_included = std::unordered_set<std::string>();
+    for (int32_t i = 0; i < projects.size(); ++i) {
+        auto& project = *projects[i];
+        for (auto& fi : project.force_includes) {
+            force_included.insert(to_string(fi));
+        }
+    }
+    out << "            \"forcedInclude\": [";
+    for (auto[i, include] : force_included | std::views::enumerate) {
+        if (i > 0) out << ",";
+        out << "\n                \"" << include << "\"";
+    }
+    out << "\n            ],\n";
+
+    // Includes
+
+    auto included = std::unordered_set<std::string>();
+    for (int32_t i = 0; i < projects.size(); ++i) {
+        auto& project = *projects[i];
+        for (auto& include : project.includes) {
+            included.insert(to_string(include));
+        }
+    }
+    out << "            \"includePath\": [";
+    for (auto[i, include] : included | std::views::enumerate) {
+        if (i > 0) out << ",";
+        out << "\n                \"" << include << "\"";
+    }
+    out << "\n            ],\n";
+
+    // Compiler settings
+
+    out << "            \"cStandard\": \"c23\",\n";
+    out << "            \"cppStandard\": \"c++23\",\n";
+    out << "            \"intelliSenseMode\": \"windows-msvc-x64\",\n";
+    out << "            \"compilerPath\": \"cl.exe\",\n";
+    out << "            \"windowsSdkVersion\": \"10.0.22621.0\",\n";
+
+    // Compiler path
+    // std::string compiler_path;
+    // {
+    //     const auto& env = get_build_environment();
+    //     auto tools_ver = env.find("VCToolsVersion=");
+    //     if (tools_ver != std::string::npos) {
+    //         compiler_path = std::format(
+    //             "C:/Program Files/Microsoft Visual Studio/2022/Community/VC/Tools/MSVC/{}/bin/Hostx64/x64/cl.exe",
+    //             env.c_str() + tools_ver + 15);
+    //     } else {
+    //         log_error("Could not determine VC Tools Version");
+    //     }
+    // }
+    // out << "            \"compilerPath\": \"" << compiler_path << "\"\n";
+
+    // End
+
+    out << "        }\n";
+    out << "    ]\n";
+    out << "}\n";
+
+    log_info("Configured successfully!");
+}
+
 void configure_cmake(std::span<project_t*> projects, flags_t flags)
 {
     auto artifacts_dir = s_paths.artifacts;
@@ -622,7 +736,7 @@ void configure_cmake(std::span<project_t*> projects, flags_t flags)
 
         out << "target_include_directories(" << project.name << " PRIVATE";
         for (auto& include : project.includes) {
-            out << "\n        " << to_string(include);
+            out << "\n        \"" << to_string(include) << "\"";
         }
         out << ")\n";
     };
@@ -634,7 +748,7 @@ void configure_cmake(std::span<project_t*> projects, flags_t flags)
         if (!project.sources.empty()) {
             out << "add_library(" << project.name << " OBJECT";
             for (auto& source : project.sources) {
-                out << "\n        " << to_string(source.file);
+                out << "\n        \"" << to_string(source.file) << "\"";
             }
             out << ")\n";
             add_defines_and_includes(project);
@@ -654,7 +768,7 @@ void configure_cmake(std::span<project_t*> projects, flags_t flags)
         for (auto& import : project.imports) {
             if (import == name) {
                 for (auto& source : project.sources) {
-                    out << "\n        " << to_string(source.file);
+                    out << "\n        \"" << to_string(source.file) << "\"";
                 }
             } else if (std::ranges::any_of(projects, [&](auto* p) { return p->name == import; })) {
                 out << "\n        $<TARGET_OBJECTS:" << import << ">";
@@ -664,7 +778,7 @@ void configure_cmake(std::span<project_t*> projects, flags_t flags)
                 auto iter = fs::directory_iterator(dir);
                 for (auto& file : iter) {
                     if (file.path().extension() == ".obj") {
-                        out << "\n        " << to_string(file.path());
+                        out << "\n        \"" << to_string(file.path()) << "\"";
                     }
                 }
             }
@@ -678,7 +792,7 @@ void configure_cmake(std::span<project_t*> projects, flags_t flags)
         // TODO: Libpaths and relative links
         for (auto& link_glob : project.links) {
             for (auto& link : resolve_glob(link_glob)) {
-                out << "\n        " << to_string(link);
+                out << "\n        \"" << to_string(link) << "\"";
             }
         }
         out << ")\n";
@@ -687,19 +801,19 @@ void configure_cmake(std::span<project_t*> projects, flags_t flags)
             out << "add_custom_command(TARGET " << name << " POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy -t $<TARGET_FILE_DIR:" << name << ">";
             for (auto& shared_lib_glob : project.shared_libs) {
                 for (auto& shared_lib : resolve_glob(shared_lib_glob)) {
-                    out << "\n        " << to_string(shared_lib);
+                    out << "\n        \"" << to_string(shared_lib) << "\"";
                 }
             }
             out << ")\n";
         }
         auto output_file = artifact.path;
         output_file.replace_extension(".exe");
-        out << "add_custom_command(TARGET " << name << " POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:" << name << ">\n        " << to_string(output_file) << ")\n";
+        out << "add_custom_command(TARGET " << name << " POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:" << name << ">\n        \"" << to_string(output_file) << "\")\n";
         if (!project.shared_libs.empty()) {
             out << "add_custom_command(TARGET " << name << " POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy -t " << to_string(artifact.path.parent_path());
             for (auto& shared_lib_glob : project.shared_libs) {
                 for (auto& shared_lib : resolve_glob(shared_lib_glob)) {
-                    out << "\n        " << to_string(shared_lib);
+                    out << "\n        \"" << to_string(shared_lib) << "\"";
                 }
             }
             out << ")\n";

@@ -110,7 +110,7 @@ int main(int argc, char* argv[]) try
 
         fs::remove_all(s_paths.environments);
 
-    } else if (args[1] == "make" || args[1] == "cmake") {
+    } else if (args[1] == "make" || args[1] == "cmake" || args[1] == "vscode") {
         std::vector<std::string_view> projects;
         flags_t flags{};
         for (uint32_t i = 2; i < args.size(); ++i) {
@@ -144,6 +144,7 @@ int main(int argc, char* argv[]) try
         if (!to_build.empty()) {
             if      (args[1] == "make")  build_project(to_build, flags);
             else if (args[1] == "cmake") configure_cmake(to_build, flags);
+            else if (args[1] == "vscode") configure_vscode(to_build, flags);
         }
 
     } else if (args[1] == "pack") {

@@ -120,6 +120,7 @@ void generate_build(project_artifactory_t& artifactory,  project_t& project, pro
 void debug_project(project_t& project);
 void build_project(std::span<project_t*> projects, flags_t flags);
 void configure_cmake(std::span<project_t*> projects, flags_t flags);
+void configure_vscode(std::span<project_t*> projects, flags_t flags);
 
 // -----------------------------------------------------------------------------
 
