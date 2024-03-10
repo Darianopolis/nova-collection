@@ -1,5 +1,6 @@
 #include "bldr.hpp"
 #include "log.hpp"
+#include "json.hpp"
 
 #include <unordered_set>
 #include <filesystem>
@@ -586,28 +587,29 @@ void build_project(std::span<project_t*> projects, flags_t flags)
 
 void configure_vscode(std::span<project_t*> projects, flags_t flags)
 {
+    log_info("Configuring VSCode C/C++ build for MS and clangd extensions");
     auto c_cpp_properties_path = fs::path(".vscode/c_cpp_properties.json");
+
     fs::create_directories(c_cpp_properties_path.parent_path());
 
     std::ofstream out(c_cpp_properties_path, std::ios::binary);
-
-    log_info("Configuring VSCode C/C++ build for MS and clangd extensions");
+    json_writer_t json(out);
 
     // TODO: Create small JSON writer
 
-    out << "{\n";
-    out << "    \"configurations\": [\n";
-    out << "        {\n";
-    out << "            \"name\": \"MSVC\",\n";
+    json.object();
+    json["configurations"].array();
+    json.object();
 
-    // Compiler args
-
-    out << "            \"compilerArgs\": [\n";
-    out << "                \"/Zc:preprocessor\",\n";
-    out << "                \"/Zc:__cplusplus\",\n";
-    out << "                \"/utf-8\"\n";
-    // TODO: Modules
-    out << "            ],\n";
+    json["name"] = "MSVC";
+    json["compilerArgs"].array();
+    {
+        json << "/Zc:preprocessor";
+        json << "/Zc:__cplusplus";
+        json << "/utf-8";
+        // TODO: Modules
+    }
+    json.end_array();
 
     // Defines
 
@@ -626,12 +628,10 @@ void configure_vscode(std::span<project_t*> projects, flags_t flags)
             }
         }
     }
-    out << "            \"defines\": [";
-    for (auto[i, define] : defined | std::views::enumerate) {
-        if (i > 0) out << ",";
-        out << "\n                \"" << define << "\"";
-    }
-    out << "\n            ],\n";
+    json["defines"].array();
+    for (auto& define : defined)
+        json << define;
+    json.end_array();
 
     // Force includes
 
@@ -642,12 +642,11 @@ void configure_vscode(std::span<project_t*> projects, flags_t flags)
             force_included.insert(to_string(fi));
         }
     }
-    out << "            \"forcedInclude\": [";
-    for (auto[i, include] : force_included | std::views::enumerate) {
-        if (i > 0) out << ",";
-        out << "\n                \"" << include << "\"";
+    json["forcedInclude"].array();
+    for (auto& include : force_included) {
+        json << include;
     }
-    out << "\n            ],\n";
+    json.end_array();
 
     // Includes
 
@@ -658,41 +657,32 @@ void configure_vscode(std::span<project_t*> projects, flags_t flags)
             included.insert(to_string(include));
         }
     }
-    out << "            \"includePath\": [";
-    for (auto[i, include] : included | std::views::enumerate) {
-        if (i > 0) out << ",";
-        out << "\n                \"" << include << "\"";
+    json["includePath"].array();
+    for (auto& include : included) {
+        json << include;
     }
-    out << "\n            ],\n";
+    json.end_array();
 
     // Compiler settings
 
-    out << "            \"cStandard\": \"c23\",\n";
-    out << "            \"cppStandard\": \"c++23\",\n";
-    out << "            \"intelliSenseMode\": \"windows-msvc-x64\",\n";
-    out << "            \"compilerPath\": \"cl.exe\",\n";
-    out << "            \"windowsSdkVersion\": \"10.0.22621.0\",\n";
+    json["cStandard"] = "c23";
+    json["cppStandard"] = "c++23";
+    json["intelliSenseMode"] = "windows-msvc-x64";
+    json["windowsSdkVersion"] = "10.0.22621.0";
 
     // Compiler path
-    // std::string compiler_path;
-    // {
-    //     const auto& env = get_build_environment();
-    //     auto tools_ver = env.find("VCToolsVersion=");
-    //     if (tools_ver != std::string::npos) {
-    //         compiler_path = std::format(
-    //             "C:/Program Files/Microsoft Visual Studio/2022/Community/VC/Tools/MSVC/{}/bin/Hostx64/x64/cl.exe",
-    //             env.c_str() + tools_ver + 15);
-    //     } else {
-    //         log_error("Could not determine VC Tools Version");
-    //     }
-    // }
-    // out << "            \"compilerPath\": \"" << compiler_path << "\"\n";
+    if (auto tools_ver = get_build_environment().find("VCToolsVersion="); tools_ver != std::string::npos) {
+        json["compilerPath"] = std::format("C:/Program Files/Microsoft Visual Studio/2022/Community/VC/Tools/MSVC/{}/bin/Hostx64/x64/cl.exe", get_build_environment().c_str() + tools_ver + 15);
+    } else {
+        log_warn("Could not determine VC Tools Version");
+        json["compilerPath"] = "cl.exe";
+    }
 
     // End
 
-    out << "        }\n";
-    out << "    ]\n";
-    out << "}\n";
+    json.end_object();
+    json.end_array();
+    json.end_object();
 
     log_info("Configured successfully!");
 }
