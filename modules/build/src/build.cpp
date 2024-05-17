@@ -123,6 +123,73 @@ const std::string& get_build_environment()
 
 uint32_t execute_program(const program_exec_t& info, flags_t flags)
 {
+    static std::mutex process_start_mutex;
+
+    std::unique_lock lock{ process_start_mutex };
+    constexpr bool use_pseudo_console = false;
+
+    STARTUPINFOEXA startup{};
+    PROCESS_INFORMATION process{};
+
+    SECURITY_ATTRIBUTES sec_attribs;
+    SecureZeroMemory(&sec_attribs, sizeof(sec_attribs));
+    sec_attribs.nLength = sizeof(sec_attribs);
+    sec_attribs.bInheritHandle = true;
+    sec_attribs.lpSecurityDescriptor = nullptr;
+
+    HANDLE stdout_read_handle;
+    HANDLE stdout_write_handle;
+
+    HANDLE stdin_read_handle;
+    HANDLE stdin_write_handle;
+
+    CreatePipe(&stdout_read_handle, &stdout_write_handle, &sec_attribs, 0);
+    CreatePipe(&stdin_read_handle, &stdin_write_handle, &sec_attribs, 0);
+
+    startup.StartupInfo.cb = sizeof(startup);
+    startup.StartupInfo.hStdError = stdout_write_handle;
+    startup.StartupInfo.hStdOutput = stdout_write_handle;
+    startup.StartupInfo.hStdInput = stdin_read_handle;
+    startup.StartupInfo.dwFlags = STARTF_USESTDHANDLES;
+
+    bool inherit_pipes = true;
+    DWORD process_create_flags = NORMAL_PRIORITY_CLASS;
+
+    if (use_pseudo_console) {
+        inherit_pipes = false;
+        process_create_flags |= EXTENDED_STARTUPINFO_PRESENT;
+
+        COORD size = { 150, 1024 };
+
+        HPCON pseudo_console;
+        auto result = CreatePseudoConsole(size, stdin_read_handle, stdout_write_handle, 0, &pseudo_console);
+        if (FAILED(result)) {
+            return result;
+        }
+
+        // Discover the size required for the list
+        size_t bytesRequired;
+        InitializeProcThreadAttributeList(NULL, 1, 0, &bytesRequired);
+
+        // Allocate memory to represent the list
+        startup.lpAttributeList = (PPROC_THREAD_ATTRIBUTE_LIST)HeapAlloc(GetProcessHeap(), 0, bytesRequired);
+        if (!startup.lpAttributeList) {
+            return ~0u;
+        }
+
+        // Initialize the list memory location
+        if (!InitializeProcThreadAttributeList(startup.lpAttributeList, 1, 0, &bytesRequired)) {
+            HeapFree(GetProcessHeap(), 0, startup.lpAttributeList);
+            return (uint32_t)GetLastError();
+        }
+
+        // Set the psueodconsole information into the list
+        if (!UpdateProcThreadAttribute(startup.lpAttributeList, 0, PROC_THREAD_ATTRIBUTE_PSEUDOCONSOLE, pseudo_console, sizeof(pseudo_console), NULL, NULL)) {
+            HeapFree(GetProcessHeap(), 0, startup.lpAttributeList);
+            return (uint32_t)GetLastError();
+        }
+    }
+
     std::stringstream ss;
     auto cmd = [&](std::string_view value)
     {
@@ -140,31 +207,75 @@ uint32_t execute_program(const program_exec_t& info, flags_t flags)
         log_debug("{}", cmd_line);
     }
 
-    STARTUPINFOA startup{};
-    PROCESS_INFORMATION process{};
+    using namespace std::chrono;
+    auto start = steady_clock::now();
 
     auto res = CreateProcessA(
         nullptr,
         cmd_line.data(),
         nullptr,
         nullptr,
-        false,
-        NORMAL_PRIORITY_CLASS,
+        inherit_pipes,
+        process_create_flags,
         (void*)get_build_environment().c_str(),
         info.working_directory.string().c_str(),
-        &startup,
+        &startup.StartupInfo,
         &process);
 
     if (!res) {
-        log_error("Error: {}", GetLastError());
-    } else {
-        WaitForSingleObject(process.hProcess, INFINITE);
-        DWORD ec;
-        GetExitCodeProcess(process.hProcess, &ec);
-        return ec;
+        std::cout << std::format("Error running process: {:#x})\n", DWORD(HRESULT_FROM_WIN32(GetLastError())));
+        return res;
     }
 
-    return 1;
+    CloseHandle(stdout_write_handle);
+    CloseHandle(stdin_read_handle);
+
+    uint64_t total_bytes_read = 0;
+
+    {
+        std::string line;
+        std::jthread reader_thread {
+            [&] {
+                std::array<char, UINT16_MAX> buffer = {};
+                DWORD bytes_read;
+                BOOL success;
+                for (;;) {
+                    success = ReadFile(stdout_read_handle, buffer.data(), DWORD(buffer.size()), &bytes_read, 0);
+                    if (!success || bytes_read == 0) break;
+                    total_bytes_read += bytes_read;
+
+                    // TODO: Time lock holding to avoid interspersing output from multiple processes
+                    for (char c : std::string_view(buffer.data(), bytes_read)) {
+                        line.push_back(c);
+                        if (c == '\n') {
+                            lock.lock();
+                            std::cout << line;
+                            lock.unlock();
+                            line.clear();
+                        }
+                    }
+                }
+            }
+        };
+
+        lock.unlock();
+        WaitForSingleObject(process.hProcess, INFINITE);
+        lock.lock();
+
+        // Flush remainder of output buffer
+        std::cout << line;
+
+        DWORD ec;
+        GetExitCodeProcess(process.hProcess, &ec);
+
+        CloseHandle(stdout_read_handle);
+        CloseHandle(stdin_write_handle);
+
+        CloseHandle(process.hProcess);
+        CloseHandle(process.hThread);
+
+        return uint32_t(ec);
+    }
 }
 
 void generate_build(project_artifactory_t& artifactory,  project_t& project, project_t& output)
@@ -271,7 +382,7 @@ bool is_dirty(const project_t& project, const fs::path& path, fs::file_time_type
         std::string str;
         std::ifstream in(cur, std::ios::binary | std::ios::ate);
         if (!in.is_open()) {
-            log_warn("Couldn't open file {}", cur.string());
+            // log_warn("Couldn't open file {}", cur.string());
             return false;
         }
         str.resize(in.tellg());
@@ -344,11 +455,10 @@ void build_project(std::span<project_t*> projects, flags_t flags)
         }
     }
 
-    std::atomic_uint32_t errors = 0;
-    std::atomic_uint32_t aborted = 0;
-    std::atomic_uint32_t skipped = 0;
+    // Find list of changed files
+    // TODO: Try linearizing and heavily memoizing this
 
-    log_info("Compiling {} files...", compile_tasks.size());
+    std::vector<uint32_t> filtered_compile_tasks;
 
 #pragma omp parallel for
     for (int32_t i = 0; i < int32_t(compile_tasks.size()); ++i) {
@@ -356,24 +466,36 @@ void build_project(std::span<project_t*> projects, flags_t flags)
         auto& project = *task.project;
         auto& source = project.sources[task.source_idx];
 
-        if (errors > 0) {
-            aborted++;
-            continue;
+        auto target_obj = source.file;
+        target_obj.replace_extension(".obj");
+        target_obj = artifacts_dir / project.name / target_obj.filename();
+        if (fs::exists(target_obj)) {
+            auto last_modified = fs::last_write_time(target_obj);
+            if (!is_dirty(project, source.file, last_modified)) {
+                continue;
+            }
+            fs::remove(target_obj);
         }
 
+#pragma omp critical
         {
-            auto target_obj = source.file;
-            target_obj.replace_extension(".obj");
-            target_obj = artifacts_dir / project.name / target_obj.filename();
-            if (fs::exists(target_obj)) {
-                auto last_modified = fs::last_write_time(target_obj);
-                if (!is_dirty(project, source.file, last_modified)) {
-                    skipped++;
-                    continue;
-                }
-                fs::remove(target_obj);
-            }
+            filtered_compile_tasks.emplace_back(i);
         }
+    }
+
+    log_info("Compiling {} file{} ({} skipped)",
+        filtered_compile_tasks.size(),
+        (filtered_compile_tasks.size() == 1) ? "" : "s",
+        compile_tasks.size() - filtered_compile_tasks.size());
+
+    std::atomic_uint32_t errors = 0;
+    std::atomic_uint32_t aborted = 0;
+
+#pragma omp parallel for
+    for (int32_t i = 0; i < int32_t(filtered_compile_tasks.size()); ++i) {
+        auto task = compile_tasks[filtered_compile_tasks[i]];
+        auto& project = *task.project;
+        auto& source = project.sources[task.source_idx];
 
         program_exec_t info;
         info.working_directory = {(artifacts_dir / project.name).string()};
@@ -395,25 +517,61 @@ void build_project(std::span<project_t*> projects, flags_t flags)
         arg(info, "/nologo");          // Suppress banner
         arg(info, "/arch:AVX2");       // AVX2 vector extensions
         if (is_set(flags, flags_t::debug)) {
-            arg(info, "/MDd");              // Use dynamic debug CRT
+            arg(info, "/MDd");         // Use dynamic debug CRT
         } else {
-            arg(info, "/MD");              // Use dynamic non-debug CRT
+            arg(info, "/MD");          // Use dynamic non-debug CRT
         }
         arg(info, "/Zc:preprocessor"); // Use conforming preprocessor
         arg(info, "/permissive-");     // Disable permissive mode
-        // arg(info, "/fp:fast");         // Allow floating point reordering
+        // arg(info, "/fp:fast");      // Allow floating point reordering
         arg(info, "/utf-8");           // Set source and execution character sets
-        arg(info, "/O2");              // Use maximum options
-        arg(info, "/Ob3");             // Use maximum inlining
+        arg(info, "/O2");              // Maximum optimization level
+        arg(info, "/Ob3");             // Maximum inlining level
 
-        arg(info, "/DUNICODE");  // Specify UNICODE for win32
+        arg(info, "/cgthreads8");      // threads for optimization + code generation
+
+        arg(info, "/DUNICODE");        // Specify UNICODE for win32
         arg(info, "/D_UNICODE");
 
-        arg(info, "/Z7");
+        arg(info, "/Z7");              // Generate debug info and include in object files
         arg(info, "/DEBUG");
 
+        arg(info, "/constexpr:steps10000000"); // Increase constexpr step limit
+
+        arg(info, "/D_CRT_SECURE_NO_WARNINGS"); // Suppress MS "security" warnings
+
+        if (!is_set(flags, flags_t::nowarn)) {
+            arg(info, "/W4");     // Warning level 4
+            arg(info, "/WX");     // Warnings as errors
+
+            arg(info, "/we4289"); // nonstandard extension used: 'variable': loop control variable declared in the for-loop is used outside the for-loop scope
+
+            arg(info, "/w14242"); // 'identifier': conversion from 'type1' to 'type1', possible loss of data
+            arg(info, "/w14254"); // 'operator': conversion from 'type1:field_bits' to 'type2:field_bits', possible loss of data
+            arg(info, "/w14263"); // 'function': member function does not override any base class virtual member function
+            arg(info, "/w14265"); // 'classname': class has virtual functions, but destructor is not virtual instances of this class may not be destructed correctly
+            arg(info, "/w14287"); // 'operator': unsigned/negative constant mismatch
+            arg(info, "/w14296"); // 'operator': expression is always 'boolean_value'
+            arg(info, "/w14311"); // 'variable': pointer truncation from 'type1' to 'type2'
+            arg(info, "/w14545"); // expression before comma evaluates to a function which is missing an argument list
+            arg(info, "/w14546"); // function call before comma missing argument list
+            arg(info, "/w14547"); // 'operator': operator before comma has no effect; expected operator with side effect
+            arg(info, "/w14549"); // 'operator': operator before comma has no effect; did you intend 'operator'?
+            arg(info, "/w14555"); // expression has no effect; expected expression with side- effect
+            arg(info, "/w14640"); // Enable warning on thread unsafe static member initialization
+            arg(info, "/w14826"); // Conversion from 'type1' to 'type_2' is sign-extended. This may cause unexpected runtime behavior.
+            arg(info, "/w14905"); // wide string literal cast to 'LPSTR'
+            arg(info, "/w14906"); // string literal cast to 'LPWSTR'
+            arg(info, "/w14928"); // illegal copy-initialization; more than one user-defined conversion has been implicitly applied
+
+            arg(info, "/wd4324"); // 'struct': structure was padded due to alignment specifier
+            arg(info, "/wd4505"); // 'function': unreferenced function with internal linkage has been removed
+
+            arg(info, "/permissive-"); // standards conformance mode for MSVC compiler.
+        }
+
         if (is_set(flags, flags_t::debug)) {
-            arg(info, "/DDEBUG");
+            arg(info, "/DDEBUG");   // Enable debug checks
             arg(info, "/D_DEBUG");
         }
 
@@ -567,10 +725,6 @@ void build_project(std::span<project_t*> projects, flags_t flags)
 
     auto end = std::chrono::steady_clock::now();
 
-    if (skipped > 0) {
-        log_info("Skipped {} clean files", skipped.load());
-    }
-
     if (errors == 0) {
         log_info("------------------------------------------------------------------------");
         log_info("\u001B[92mBuild Success\u001B[0m | Total time: {}", duration_to_string(end - start));
@@ -585,7 +739,7 @@ void build_project(std::span<project_t*> projects, flags_t flags)
     }
 }
 
-void configure_vscode(std::span<project_t*> projects, flags_t flags)
+void configure_vscode(std::span<project_t*> projects, flags_t)
 {
     log_info("Configuring VSCode C/C++ build for MS and clangd extensions");
     auto c_cpp_properties_path = fs::path(".vscode/c_cpp_properties.json");
@@ -665,18 +819,11 @@ void configure_vscode(std::span<project_t*> projects, flags_t flags)
 
     // Compiler settings
 
-    json["cStandard"] = "c23";
-    json["cppStandard"] = "c++23";
-    json["intelliSenseMode"] = "windows-msvc-x64";
+    json["cStandard"]         = "c23";
+    json["cppStandard"]       = "c++23";
+    json["intelliSenseMode"]  = "windows-msvc-x64";
     json["windowsSdkVersion"] = "10.0.22621.0";
-
-    // Compiler path
-    if (auto tools_ver = get_build_environment().find("VCToolsVersion="); tools_ver != std::string::npos) {
-        json["compilerPath"] = std::format("C:/Program Files/Microsoft Visual Studio/2022/Community/VC/Tools/MSVC/{}/bin/Hostx64/x64/cl.exe", get_build_environment().c_str() + tools_ver + 15);
-    } else {
-        log_warn("Could not determine VC Tools Version");
-        json["compilerPath"] = "cl.exe";
-    }
+    json["compilerPath"] = "cl.exe";
 
     // End
 
@@ -687,7 +834,7 @@ void configure_vscode(std::span<project_t*> projects, flags_t flags)
     log_info("Configured successfully!");
 }
 
-void configure_cmake(std::span<project_t*> projects, flags_t flags)
+void configure_cmake(std::span<project_t*> projects, flags_t)
 {
     auto artifacts_dir = s_paths.artifacts;
 
