@@ -33,6 +33,8 @@ enum class flags_t : uint64_t
     noopt  = 1 << 2,
     trace  = 1 << 3,
     debug  = 1 << 4,
+    strip  = 1 << 5,
+    lto    = 1 << 6,
 };
 
 inline
@@ -118,7 +120,7 @@ struct project_artifactory_t
 void populate_artifactory(project_artifactory_t& artifactory, flags_t flags);
 void generate_build(project_artifactory_t& artifactory,  project_t& project, project_t& output);
 void debug_project(project_t& project);
-void build_project(std::span<project_t*> projects, flags_t flags);
+bool build_project(std::span<project_t*> projects, flags_t flags);
 void configure_cmake(std::span<project_t*> projects, flags_t flags);
 void configure_vscode(std::span<project_t*> projects, flags_t flags);
 

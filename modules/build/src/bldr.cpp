@@ -120,6 +120,8 @@ int main(int argc, char* argv[]) try
             else if (arg == "-no-opt")  flags = flags | flags_t::noopt;
             else if (arg == "-trace")   flags = flags | flags_t::trace;
             else if (arg == "-debug")   flags = flags | flags_t::debug;
+            else if (arg == "-strip")   flags = flags | flags_t::strip;
+            else if (arg == "-lto")     flags = flags | flags_t::lto;
             else projects.push_back(arg);
         }
 
@@ -142,9 +144,15 @@ int main(int argc, char* argv[]) try
         }
 
         if (!to_build.empty()) {
-            if      (args[1] == "make")  build_project(to_build, flags);
-            else if (args[1] == "cmake") configure_cmake(to_build, flags);
-            else if (args[1] == "vscode") configure_vscode(to_build, flags);
+            if (args[1] == "make") {
+                if (!build_project(to_build, flags)) {
+                    return 1;
+                }
+            } else if (args[1] == "cmake") {
+                configure_cmake(to_build, flags);
+            } else if (args[1] == "vscode") {
+                configure_vscode(to_build, flags);
+            }
         }
 
     } else if (args[1] == "pack") {

@@ -425,7 +425,7 @@ bool is_dirty(const project_t& project, const fs::path& path, fs::file_time_type
     return check(path);
 }
 
-void build_project(std::span<project_t*> projects, flags_t flags)
+bool build_project(std::span<project_t*> projects, flags_t flags)
 {
     auto start = std::chrono::steady_clock::now();
 
@@ -533,8 +533,15 @@ void build_project(std::span<project_t*> projects, flags_t flags)
         arg(info, "/DUNICODE");        // Specify UNICODE for win32
         arg(info, "/D_UNICODE");
 
-        arg(info, "/Z7");              // Generate debug info and include in object files
-        arg(info, "/DEBUG");
+        if (is_set(flags, flags_t::lto)) {
+            arg(info, "/GL");          // Enable whole program optimization
+            arg(info, "/Gw");          // Optimize global data
+        }
+
+        if (!is_set(flags, flags_t::strip)) {
+            arg(info, "/Z7");          // Generate debug info and include in object files
+            arg(info, "/DEBUG");
+        }
 
         arg(info, "/constexpr:steps10000000"); // Increase constexpr step limit
 
@@ -625,9 +632,13 @@ void build_project(std::span<project_t*> projects, flags_t flags)
             arg(info, "link");
 
             arg(info, "/nologo");
-            arg(info, "/IGNORE:4099");    // PDB 'filename' was not found with 'object/library' or at 'path'; linking object as if no debug info
-            arg(info, "/INCREMENTAL");    // TODO: Add option for full optimizing link
-            arg(info, "/DYNAMICBASE:NO"); // Disable address space layout randomization.
+            arg(info, "/IGNORE:4099");     // PDB 'filename' was not found with 'object/library' or at 'path'; linking object as if no debug info
+            if (is_set(flags, flags_t::lto)) {
+                arg(info, "/LTCG");
+            } else {
+                arg(info, "/INCREMENTAL"); // Incremental build when not optimizing
+            }
+            arg(info, "/DYNAMICBASE:NO");  // Disable address space layout randomization.
 
             arg(info, "/DEBUG");
 
@@ -729,6 +740,7 @@ void build_project(std::span<project_t*> projects, flags_t flags)
         log_info("------------------------------------------------------------------------");
         log_info("\u001B[92mBuild Success\u001B[0m | Total time: {}", duration_to_string(end - start));
         log_info("------------------------------------------------------------------------");
+        return true;
     } else {
         if (aborted > 0) {
             log_warn("Aborted {} files after errors", aborted.load());
@@ -736,6 +748,7 @@ void build_project(std::span<project_t*> projects, flags_t flags)
         log_error("------------------------------------------------------------------------");
         log_error("\u001B[91mBuild Failure!\u001B[0m | Errors: {}", errors.load());
         log_error("------------------------------------------------------------------------");
+        return false;
     }
 }
 
