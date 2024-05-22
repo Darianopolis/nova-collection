@@ -35,6 +35,7 @@ enum class flags_t : uint64_t
     debug  = 1 << 4,
     strip  = 1 << 5,
     lto    = 1 << 6,
+    link = 1 << 7, // force a relink
 };
 
 inline
@@ -116,6 +117,9 @@ struct project_artifactory_t
 {
     std::unordered_map<std::string_view, project_t*> projects;
 };
+
+void load_file_include_cache();
+void save_file_include_cache();
 
 void populate_artifactory(project_artifactory_t& artifactory, flags_t flags);
 void generate_build(project_artifactory_t& artifactory,  project_t& project, project_t& output);

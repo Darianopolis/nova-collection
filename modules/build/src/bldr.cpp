@@ -27,6 +27,12 @@ bldr install add    : Install new bldr files
     std::exit(1);
 }
 
+struct file_index_guard_t
+{
+    file_index_guard_t() { load_file_include_cache(); }
+    ~file_index_guard_t() { save_file_include_cache(); }
+};
+
 int main(int argc, char* argv[]) try
 {
     std::vector<std::string_view> args(argv, argv + argc);
@@ -36,6 +42,8 @@ int main(int argc, char* argv[]) try
     s_paths.environments = s_paths.dir / "environments";
     s_paths.installed    = s_paths.dir / "installed";
     fs::create_directories(s_paths.dir);
+
+    file_index_guard_t file_index_guard;
 
     if (args.size() < 2) display_help("Expected action");
 
@@ -122,6 +130,7 @@ int main(int argc, char* argv[]) try
             else if (arg == "-debug")   flags = flags | flags_t::debug;
             else if (arg == "-strip")   flags = flags | flags_t::strip;
             else if (arg == "-lto")     flags = flags | flags_t::lto;
+            else if (arg == "-link")    flags = flags | flags_t::link;
             else projects.push_back(arg);
         }
 
