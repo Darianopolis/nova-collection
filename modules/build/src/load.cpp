@@ -170,6 +170,14 @@ void populate_artifactory_from_file(project_artifactory_t& artifactory, const fs
         project->artifact = std::move(artifact);
     });
 
+    lua.set_function("Platform", [&](std::string_view str) {
+        if (str == "Win32") return true;
+
+        log_error("Unrecognized platform: [{}]. Must be one of:", str);
+        log_error(" - Win32");
+        std::exit(1);
+    });
+
     lua.set_function("Link", [&](const sol::object& obj) {
         auto values = get_values(obj);
         for (auto& value : values.values) {

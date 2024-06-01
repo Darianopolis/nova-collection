@@ -556,10 +556,6 @@ bool build_project(std::span<project_t*> projects, flags_t flags)
         }
     }
 
-    for (auto& project : projects) {
-        fs::create_directories(artifacts_dir / project->name);
-    }
-
     struct compile_task_t
     {
         project_t* project;
@@ -580,6 +576,12 @@ bool build_project(std::span<project_t*> projects, flags_t flags)
     std::unordered_set<std::filesystem::path> generated_objs;
     std::unordered_set<std::filesystem::path>       obj_dirs;
 
+    for (auto& project : projects) {
+        auto obj_dir = artifacts_dir / project->name;
+        fs::create_directories(obj_dir);
+        obj_dirs.emplace(obj_dir);
+    }
+
     timer.segment("scan for changes");
 
     for (int32_t i = 0; i < int32_t(compile_tasks.size()); ++i) {
@@ -592,7 +594,6 @@ bool build_project(std::span<project_t*> projects, flags_t flags)
         target_obj = artifacts_dir / project.name / target_obj.filename();
 
         generated_objs.emplace(target_obj);
-        obj_dirs.emplace(target_obj.parent_path());
 
         if (fs::exists(target_obj)) {
             auto last_modified = fs::last_write_time(target_obj);
@@ -652,8 +653,11 @@ bool build_project(std::span<project_t*> projects, flags_t flags)
             arg(info, "/permissive-");     // Disable permissive mode
             // arg(info, "/fp:fast");      // Allow floating point reordering
             arg(info, "/utf-8");           // Set source and execution character sets
-            arg(info, "/O2");              // Maximum optimization level
-            arg(info, "/Ob3");             // Maximum inlining level
+
+            if (!is_set(flags, flags_t::noopt)) {
+                arg(info, "/O2");          // Maximum optimization level
+                arg(info, "/Ob3");         // Maximum inlining level
+            }
 
             arg(info, "/cgthreads8");      // threads for optimization + code generation
 
@@ -848,6 +852,21 @@ bool build_project(std::span<project_t*> projects, flags_t flags)
                     }
                 }
             }
+
+            // // Mark dlls as lazy load
+            // // TODO: ONLY do this for dlls with a specific flag set in the bldr script
+            // {
+            //     for (auto& shared_lib_glob : project.shared_libs) {
+            //         for (auto& shared_lib : resolve_glob(shared_lib_glob)) {
+            //             arg(info, "/DELAYLOAD:", shared_lib.filename().string());
+            //             // auto slib_target = path.parent_path() / shared_lib.filename();
+            //             // fs::remove(slib_target);
+            //             // fs::copy(shared_lib, slib_target);
+            //         }
+            //     }
+            // }
+            // arg(info, "delayimp.lib");
+
 
             // Check if any link inputs changed
 
