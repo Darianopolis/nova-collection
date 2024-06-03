@@ -1,28 +1,37 @@
+#undef UNICODE
+#define UNICODE
+
+#undef _UNICODE
+#define _UNICODE
+
+#undef NOMINMAX
+#define NOMINMAX
+
+#undef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+
+// #include <windowsx.h>
+// #include <shellapi.h>
+
+#include <Windows.h>
+#include <shellapi.h>
+#include <combaseapi.h>
+#include <wincodec.h>
+#include <CommCtrl.h>
+
+// -----------------------------------------------------------------------------
+
 #include "nms_Platform.hpp"
 
-#include <nova/core/nova_Guards.hpp>
-#include <nova/core/nova_Stack.hpp>
+#include <nova/core/nova_Core.hpp>
 
 namespace nms
 {
-    void ConvertToWString(std::string_view input, std::wstring& output)
-    {
-        i32 length = MultiByteToWideChar(CP_UTF8, MB_PRECOMPOSED, input.data(), i32(input.size()), nullptr, 0);
-        output.resize(length);
-        MultiByteToWideChar(CP_UTF8, MB_PRECOMPOSED, input.data(), i32(input.size()), output.data(), length);
-    }
-
-    void ConvertToString(std::wstring_view input, std::string& output)
-    {
-        i32 length = WideCharToMultiByte(CP_UTF8, 0, input.data(), i32(input.size()), nullptr, 0, nullptr, nullptr);
-        output.resize(length);
-        WideCharToMultiByte(CP_UTF8, 0, input.data(), i32(input.size()), output.data(), length, nullptr, nullptr);
-    }
-
 // -----------------------------------------------------------------------------
 
     struct ComState
     {
+        bool created = false;
         IWICImagingFactory* wic;
 
         ankerl::unordered_dense::map<u64, nova::Image> imageCache;
@@ -46,10 +55,13 @@ namespace nms
         }
     };
 
-    static ComState NmsComState = {};
+    static ComState NmsComState;
 
     void ClearIconCache()
     {
+        for (auto&[hash, texture] : NmsComState.imageCache) {
+            texture.Destroy();
+        }
         NmsComState.imageCache.clear();
     }
 
@@ -64,7 +76,7 @@ namespace nms
 
         SHFILEINFO info = {};
 
-        auto wPath = ConvertToWString(path);
+        auto wPath = nova::ToUtf16(path);
 
         if (auto list = (HIMAGELIST)SHGetFileInfoW(wPath.c_str(),
             FILE_ATTRIBUTE_NORMAL,
@@ -117,8 +129,8 @@ namespace nms
         if (texture)
             return texture;
 
-        NOVA_LOG("Loading icon {}, size = ({}, {})", path, width, height);
-        NOVA_LOG("  Num images = {}", NmsComState.imageCache.size());
+        nova::Log("Loading icon {}, size = ({}, {})", path, width, height);
+        nova::Log("  Num images = {}", NmsComState.imageCache.size());
 
         texture = nova::Image::Create(context, Vec3U(width, height, 0),
             nova::ImageUsage::Sampled,

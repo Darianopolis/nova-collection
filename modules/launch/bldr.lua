@@ -1,11 +1,8 @@
 if Project "nms-search" then
     Compile { "src/nms-search/**" }
     Include "src"
-    Import {
-        "nova",
-        "glfw",
-        "index",
-    }
+    Import { "nova", "index" }
+    Embed { "SEGOEUI.TTF", "SEGUISB.TTF" }
     Artifact { "out/nms-search", type = "Window" }
 end
 

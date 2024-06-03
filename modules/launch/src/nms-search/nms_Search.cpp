@@ -1,6 +1,25 @@
+#undef UNICODE
+#define UNICODE
+
+#undef _UNICODE
+#define _UNICODE
+
+#undef NOMINMAX
+#define NOMINMAX
+
+#undef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+
+#include <Windows.h>
+#include <shellapi.h>
+#include <combaseapi.h>
+
+// -----------------------------------------------------------------------------
+
 #include "nms_Search.hpp"
 
-#include <nova/core/nova_Guards.hpp>
+#include <nova/core/nova_Core.hpp>
+#include <nova/vfs/nova_VirtualFilesystem.hpp>
 
 #include <stb_image.h>
 
@@ -10,67 +29,56 @@ using namespace std::literals;
 
 App::App()
 {
-    glfwInit();
-    glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-    glfwWindowHint(GLFW_TRANSPARENT_FRAMEBUFFER, GLFW_TRUE);
-    glfwWindowHint(GLFW_DECORATED, GLFW_FALSE);
-    window = glfwCreateWindow(1920, 1200, "No More Shortcuts", nullptr, nullptr);
+    app = nova::Application::Create();
 
-    HWND hwnd = glfwGetWin32Window(window);
-    SetWindowLongW(hwnd, GWL_EXSTYLE, GetWindowLongW(hwnd, GWL_EXSTYLE) | WS_EX_LAYERED);
-
-    // TODO: Chroma key is an ugly hack, use nchittest to do analytical transparency
-    //   Or, do full screeen pass to filter out unintentional chroma key matches and
-    //   apply chroma key based on alpha.
-    SetLayeredWindowAttributes(hwnd, RGB(0, 1, 0), 0, LWA_COLORKEY);
+    window = nova::Window::Create(app)
+        .SetTitle("No More Shortcuts")
+        .SetDecorate(false)
+        .SetTransparency(nova::TransparencyMode::PerPixel)
+        .Show(true);
 
     context = nova::Context::Create({ .debug = false });
     queue = context.Queue(nova::QueueFlags::Graphics, 0);
-    imDraw = std::make_unique<nova::draw::Draw2D>(context);
+    draw = std::make_unique<nova::draw::Draw2D>(context);
 
     {
         char module_filename[4096];
         GetModuleFileNameA(nullptr, module_filename, sizeof(module_filename));
-        NOVA_LOG("Module filename: {}", module_filename);
+        nova::Log("Module filename: {}", module_filename);
         exe_dir = std::filesystem::path(module_filename).parent_path();
-        NOVA_LOG(" exe dir: {}", exe_dir.string());
+        nova::Log(" exe dir: {}", exe_dir.string());
     }
 
-    std::filesystem::create_directories(std::filesystem::path(indexFile).parent_path());
+    create_directories(std::filesystem::path(index_file).parent_path());
 
-NOVA_DEBUG();
-    searcher.init(context, context.Queue(nova::QueueFlags::Compute, 0));
-NOVA_DEBUG();
+    searcher.init(context, queue);
 
-    {
-        GLFWimage iconImage;
+//     // {
+//     //     GLFWimage icon_image;
 
-        i32 channels;
-        iconImage.pixels = stbi_load("favicon.png", &iconImage.width, &iconImage.height, &channels, STBI_rgb_alpha);
-        NOVA_DEFER(&) { stbi_image_free(iconImage.pixels); };
+//     //     i32 channels;
+//     //     icon_image.pixels = stbi_load("favicon.png", &icon_image.width, &icon_image.height, &channels, STBI_rgb_alpha);
+//     //     NOVA_DEFER(&) { stbi_image_free(icon_image.pixels); };
 
-        glfwSetWindowIcon(window, 1, &iconImage);
-    }
+//     //     glfwSetWindowIcon(window, 1, &icon_image);
+//     // }
 
-    swapchain = nova::Swapchain::Create(context, glfwGetWin32Window(window),
+    swapchain = nova::Swapchain::Create(context, window,
         nova::ImageUsage::TransferDst
         | nova::ImageUsage::ColorAttach,
-        nova::PresentMode::Fifo);
-
-    commandPool = nova::CommandPool::Create(context, queue);
-    fence = nova::Fence::Create(context);
+        nova::PresentMode::Layered,
+        nova::SwapchainFlags::PreMultipliedAlpha);
 
 // -----------------------------------------------------------------------------
 
-    i32 count;
-    auto mode = glfwGetVideoMode(glfwGetMonitors(&count)[0]);
-    mWidth = mode->width;
-    mHeight = mode->height;
+    auto display = app.PrimaryDisplay();
+    window_width = display.Size().x;
+    window_height = display.Size().y;
 
 // -----------------------------------------------------------------------------
 
-    font = imDraw->LoadFont("SEGUISB.TTF", 35.f * ui_scale);
-    fontSmall = imDraw->LoadFont("SEGOEUI.TTF", 18.f * ui_scale);
+    font = draw->LoadFont(nova::vfs::Load("SEGUISB.TTF"), 35.f * ui_scale);
+    font_small = draw->LoadFont(nova::vfs::Load("SEGOEUI.TTF"), 18.f * ui_scale);
 
 // -----------------------------------------------------------------------------
 
@@ -78,30 +86,36 @@ NOVA_DEBUG();
 
     using namespace std::chrono;
 
-NOVA_DEBUG();
-    resultList = std::make_unique<ResultListPriorityCollector>();
-    favResultList = std::make_unique<FavResultList>();
-    NOVA_LOGEXPR(favResultList);
-    fileResultList = std::make_unique<FileResultList>(&searcher, favResultList.get());
-    resultList->AddList(favResultList.get());
-    resultList->AddList(fileResultList.get());
-NOVA_DEBUG();
+    result_list = std::make_unique<ResultListPriorityCollector>();
+    fav_result_list = std::make_unique<FavResultList>();
+    file_result_list = std::make_unique<FileResultList>(&searcher, fav_result_list.get());
+    result_list->AddList(fav_result_list.get());
+    result_list->AddList(file_result_list.get());
 
     show = false;
 
-NOVA_DEBUG();
     UpdateIndex();
-NOVA_DEBUG();
     ResetItems();
-NOVA_DEBUG();
     UpdateQuery();
-NOVA_DEBUG();
 }
+
+static bool mutable_true = true;
 
 App::~App()
 {
-    fence.Wait();
+    queue.WaitIdle();
     nms::ClearIconCache();
+    items.clear();
+    result_list.reset();
+    fav_result_list.reset();
+    file_result_list.reset();
+    font_small.reset();
+    font.reset();
+    swapchain.Destroy();
+    searcher.destroy();
+    draw.reset();
+    context.Destroy();
+    app.Destroy();
 }
 
 void App::ResetItems(bool end)
@@ -109,28 +123,28 @@ void App::ResetItems(bool end)
     items.clear();
     if (end)
     {
-        auto item = resultList->Prev(nullptr);
+        auto item = result_list->Prev(nullptr);
         if (item)
         {
             auto itemP = item.get();
             items.push_back(std::move(item));
-            while ((items.size() < 5) && (item = resultList->Prev(itemP)))
+            while ((items.size() < 5) && (item = result_list->Prev(itemP)))
             {
                 itemP = item.get();
                 items.push_back(std::move(item));
             }
-            std::reverse(items.begin(), items.end());
+            std::ranges::reverse(items);
         }
-        selection = (u32)items.size() - 1;
+        selection = u32(items.size() - 1);
     }
     else
     {
-        auto item = resultList->Next(nullptr);
+        auto item = result_list->Next(nullptr);
         if (item)
         {
             auto itemP = item.get();
             items.push_back(std::move(item));
-            while ((items.size() < 5) && (item = resultList->Next(itemP)))
+            while ((items.size() < 5) && (item = result_list->Next(itemP)))
             {
                 itemP = item.get();
                 items.push_back(std::move(item));
@@ -146,13 +160,13 @@ void App::ResetQuery()
     keywords.emplace_back();
     // tree.setMatchBits(1, 1, 0, 0);
     // tree.matchBits = 1;
-    resultList->FilterStrings(keywords);
+    result_list->FilterStrings(keywords);
     UpdateQuery();
 }
 
-std::string App::JoinQuery()
+std::string App::JoinQuery() const
 {
-    auto str = std::string{};
+    auto str = std::string {};
     for (auto& k : keywords) {
         if (k.empty())
             continue;
@@ -174,46 +188,37 @@ void App::UpdateQuery()
 void App::Move(i32 delta)
 {
     auto i = delta;
-    if (i < 0)
-    {
+    if (i < 0) {
         while (MoveSelectedUp() && ++i < 0);
-    }
-    else if (i > 0)
-    {
+    } else if (i > 0) {
         while (MoveSelectedDown() && --i > 0);
     }
 }
 
 bool App::MoveSelectedUp()
 {
-    if (items.empty())
+    if (items.empty()) {
         return false;
+    }
 
-    if (items.size() < 5)
-    {
-        if (selection == 0)
+    if (items.size() < 5) {
+        if (selection == 0) {
             return false;
+        }
 
         selection--;
-    }
-    else if (selection > 2)
-    {
+
+    } else if (selection > 2) {
         selection--;
-    }
-    else
-    {
-        auto prev = resultList->Prev(items[0].get());
-        if (prev)
-        {
+    } else {
+        auto prev = result_list->Prev(items[0].get());
+        if (prev) {
             std::rotate(items.rbegin(), items.rbegin() + 1, items.rend());
             items[0] = std::move(prev);
-        }
-        else if (selection > 0)
-        {
+
+        } else if (selection > 0) {
             selection--;
-        }
-        else
-        {
+        } else {
             return false;
         }
     }
@@ -223,34 +228,28 @@ bool App::MoveSelectedUp()
 
 bool App::MoveSelectedDown()
 {
-    if (items.empty())
-         return false;
+    if (items.empty()) {
+        return false;
+    }
 
-    if (items.size() < 5)
-    {
-        if (selection == items.size() - 1)
+    if (items.size() < 5) {
+        if (selection == items.size() - 1) {
             return false;
+        }
 
         selection++;
-    }
-    else if (selection < 2)
-    {
+
+    } else if (selection < 2) {
         selection++;
-    }
-    else
-    {
-        auto next = resultList->Next(items[items.size() - 1].get());
-        if (next)
-        {
+    } else {
+        auto next = result_list->Next(items[items.size() - 1].get());
+        if (next) {
             std::rotate(items.begin(), items.begin() + 1, items.end());
             items[items.size() - 1] = std::move(next);
-        }
-        else if (selection < 4)
-        {
+
+        } else if (selection < 4) {
             selection++;
-        }
-        else
-        {
+        } else {
             return false;
         }
     }
@@ -260,56 +259,56 @@ bool App::MoveSelectedDown()
 
 void App::Draw()
 {
-    Vec4 backgroundColor = { 0.1f, 0.1f, 0.1f, 1.f };
-    Vec4 borderColor =  { 0.6f, 0.6f, 0.6f, 0.5f };
-    Vec4 highlightColor = { 0.4f, 0.4f, 0.4f, 0.2f, };
+    Vec4 background_color = { 0.1f, 0.1f, 0.1f, 1.f };
+    Vec4 border_color =  { 0.6f, 0.6f, 0.6f, 0.5f };
+    Vec4 highlight_color = { 0.4f, 0.4f, 0.4f, 0.2f, };
 
-    Vec2 pos = { mWidth * 0.5f, mHeight * 0.5f };
+    Vec2 pos = { window_width * 0.5f, window_height * 0.5f };
 
-    Vec2 hInputSize = Vec2 { 960.f, 29.f } * ui_scale;
+    Vec2 half_input_size = Vec2 { 960.f, 29.f } * ui_scale;
 
-    f32 outputItemHeight = 76.f * ui_scale;
-    u32 outputCount = u32(items.size());
+    f32 output_item_height = 76.f * ui_scale;
+    u32 output_count = u32(items.size());
 
-    f32 hOutputWidth = 600.f * ui_scale;
-    f32 hOutputHeight = 0.5f * outputItemHeight * outputCount;
+    f32 half_output_width = 600.f * ui_scale;
+    f32 half_output_height = 0.5f * output_item_height * output_count;
 
     f32 margin = 18.f * ui_scale;
 
-    f32 cornerRadius = 18.f * ui_scale;
-    f32 borderWidth = 2.f * ui_scale;
+    f32 corner_radius = 18.f * ui_scale;
+    f32 border_width = 2.f * ui_scale;
 
-    Vec2 textInset = Vec2 { 74.5f, 37.f } * ui_scale;
-    Vec2 textSmallInset = Vec2 { 76.f, 60.f } * ui_scale;
+    Vec2 text_inset = Vec2 { 74.5f, 37.f } * ui_scale;
+    Vec2 text_small_inset = Vec2 { 76.f, 60.f } * ui_scale;
 
-    f32 iconSize = 50 * ui_scale;
-    f32 iconPadding = (outputItemHeight - iconSize) / 2.f;
+    f32 icon_size = 50 * ui_scale;
+    f32 icon_padding = (output_item_height - icon_size) / 2.f;
 
-    f32 inputTextVOffset = 17.f * ui_scale;
+    f32 input_text_vertical_offset = 17.f * ui_scale;
 
-    f32 highlightInset = 2.f * ui_scale;
+    f32 highlight_inset = 2.f * ui_scale;
 
     // Input box
 
-    imDraw->DrawRect({
-        .center_color = backgroundColor,
-        .border_color = borderColor,
-        .center_pos = pos - Vec2(0.f, hInputSize.y),
-        .half_extent = hInputSize + Vec2(borderWidth),
-        .corner_radius = cornerRadius,
-        .border_width = borderWidth,
+    draw->DrawRect({
+        .center_color = background_color,
+        .border_color = border_color,
+        .center_pos = pos - Vec2(0.f, half_input_size.y),
+        .half_extent = half_input_size + Vec2(border_width),
+        .corner_radius = corner_radius,
+        .border_width = border_width,
     });
 
     // Input text
 
     {
         auto query = JoinQuery();
-        auto bounds = imDraw->MeasureString(query, *font);
+        auto bounds = draw->MeasureString(query, *font);
 
         if (!bounds.Empty())
         {
-            imDraw->DrawString(query,
-                pos - Vec2(bounds.Width() * 0.5f, inputTextVOffset),
+            draw->DrawString(query,
+                pos - Vec2(bounds.Width() * 0.5f, input_text_vertical_offset),
                 *font);
         }
     }
@@ -319,37 +318,37 @@ void App::Draw()
 
     // Output box
 
-    imDraw->DrawRect({
-        .center_color = backgroundColor,
-        .border_color = borderColor,
-        .center_pos = pos + Vec2(0.f, hOutputHeight + margin + borderWidth),
-        .half_extent = Vec2(hOutputWidth, hOutputHeight) + Vec2(borderWidth),
-        .corner_radius = cornerRadius,
-        .border_width = borderWidth,
+    draw->DrawRect({
+        .center_color = background_color,
+        .border_color = border_color,
+        .center_pos = pos + Vec2(0.f, half_output_height + margin + border_width),
+        .half_extent = Vec2(half_output_width, half_output_height) + Vec2(border_width),
+        .corner_radius = corner_radius,
+        .border_width = border_width,
     });
 
     // Highlight
 
-    imDraw->DrawRect({
-        .center_color = highlightColor,
+    draw->DrawRect({
+        .center_color = highlight_color,
         .center_pos = pos
-            + Vec2(0.f, margin + borderWidth + outputItemHeight * (0.5f + f32(selection))),
-        .half_extent = Vec2(hOutputWidth, outputItemHeight * 0.5f)
-            - Vec2(highlightInset),
-        .corner_radius = cornerRadius - borderWidth - highlightInset,
+            + Vec2(0.f, margin + border_width + output_item_height * (0.5f + f32(selection))),
+        .half_extent = Vec2(half_output_width, output_item_height * 0.5f)
+            - Vec2(highlight_inset),
+        .corner_radius = corner_radius - border_width - highlight_inset,
     });
 
-    for (u32 i = 0; i < outputCount; ++i)
+    for (u32 i = 0; i < output_count; ++i)
     {
         auto path = items[i]->GetPath();
 
         // Icon
 
         IconResult* icon;
-        auto iter = iconCache.find(path);
-        if (iter == iconCache.end())
+        auto iter = icon_cache.find(path);
+        if (iter == icon_cache.end())
         {
-            icon = &iconCache[path];
+            icon = &icon_cache[path];
             icon->texture = nms::LoadIconFromPath(context, path.string());
         }
         else
@@ -359,14 +358,14 @@ void App::Draw()
 
         if (icon->texture)
         {
-            imDraw->DrawRect({
+            draw->DrawRect({
                 .center_pos = pos
-                    + Vec2(-hOutputWidth + (iconSize / 2.f) + iconPadding,
-                        margin + borderWidth + outputItemHeight * (0.5f + f32(i))),
-                .half_extent = Vec2(iconSize) / 2.f,
+                    + Vec2(-half_output_width + (icon_size / 2.f) + icon_padding,
+                        margin + border_width + output_item_height * (0.5f + f32(i))),
+                .half_extent = Vec2(icon_size) / 2.f,
 
                 .tex_tint = Vec4(1.f),
-                .tex_idx = icon->texture.Descriptor(),
+                .tex_handle = {icon->texture.Descriptor(), draw->default_sampler.Descriptor()},
                 .tex_center_pos = { 0.5f, 0.5f },
                 .tex_half_extent = { 0.5f, 0.5f },
             });
@@ -374,104 +373,106 @@ void App::Draw()
 
         // Filename
 
-        imDraw->DrawString(
+        draw->DrawString(
             path.filename().empty()
                 ? path.string()
                 : path.filename().string(),
-            pos + Vec2(-hOutputWidth, margin + borderWidth)
-                + Vec2(0.f, outputItemHeight * f32(i))
-                + textInset,
+            pos + Vec2(-half_output_width, margin + border_width)
+                + Vec2(0.f, output_item_height * f32(i))
+                + text_inset,
             *font);
 
         // Path
 
-        imDraw->DrawString(
+        draw->DrawString(
             path.has_parent_path()
                 ? path.parent_path().string()
                 : path.string(),
-            pos + Vec2(-hOutputWidth, margin + borderWidth)
-                + Vec2(0.f, outputItemHeight * f32(i))
-                + textSmallInset,
-            *fontSmall);
+            pos + Vec2(-half_output_width, margin + border_width)
+                + Vec2(0.f, output_item_height * f32(i))
+                + text_small_inset,
+            *font_small);
     }
 }
 
 void App::Run()
 {
-    glfwSetWindowUserPointer(window, this);
-    glfwSetCharCallback(window, [](auto w, u32 codepoint) {
-        auto app = (App*)glfwGetWindowUserPointer(w);
-        app->OnChar(codepoint);
+    app.AddCallback([&](const nova::AppEvent& e) {
+        switch (e.type) {
+            break;case nova::EventType::Text:
+                for (const char* c = e.text.text; *c; c++) {
+                    OnChar(*c);
+                }
+            break;case nova::EventType::Input:
+                {
+                    auto vk = app.ToVirtualKey(e.input.channel);
+                    OnKey(vk, e.input.pressed);
+                }
+            break;case nova::EventType::Hotkey:
+                nova::Log("Received hotkey event!");
+                window.Show(true);
+        }
     });
-    glfwSetKeyCallback(window, [](auto w, i32 key, i32 scancode, i32 action, i32 mods) {
-        (void)scancode;
 
-        auto app = (App*)glfwGetWindowUserPointer(w);
-        app->OnKey(key, action, mods);
-    });
+    // TODO: This should all be handled by nova
+    RegisterHotKey((HWND)window.NativeHandle(), 1, MOD_CONTROL | MOD_SHIFT, VK_SPACE);
 
-    auto hwnd = glfwGetWin32Window(window);
-    RegisterHotKey(hwnd, 1, MOD_CONTROL | MOD_SHIFT, VK_SPACE);
+    show = true;
 
-    MSG msg = {};
+    for (;app.ProcessEvents(); show = true) {
 
-    while (running)
-    {
-        show = true;
-        glfwShowWindow(window);
-        glfwSetWindowShouldClose(window, GLFW_FALSE);
-
-        while (!glfwWindowShouldClose(window))
-        {
-            while (PeekMessage(&msg, hwnd, 0, 0, PM_REMOVE))
-            {
-                TranslateMessage(&msg);
-
-                if (msg.message == WM_HOTKEY)
-                    glfwShowWindow(window);
-
-                DispatchMessage(&msg);
-            }
-            glfwPollEvents();
-
-            imDraw->Reset();
-            Draw();
-
-            // Wait for frame
-
-            fence.Wait();
-            commandPool.Reset();
-
-            // Record commands
-
-            auto cmd = commandPool.Begin();
-
-            // Update window size, record primary buffer and present
-
-            glfwSetWindowSize(window, i32(imDraw->Bounds().Width()), i32(imDraw->Bounds().Height()));
-            glfwSetWindowPos(window, i32(imDraw->Bounds().min.x), i32(imDraw->Bounds().min.y));
-
-            queue.Acquire({swapchain}, {fence});
-
-            cmd.ClearColor(swapchain.Target(), Vec4(0.f, 1/255.f, 0.f, 0.f));
-            imDraw->Record(cmd, swapchain.Target());
-
-            cmd.Present(swapchain);
-
-            queue.Submit({cmd}, {fence}, {fence});
-            queue.Present({swapchain}, {fence});
-
-            if (!show)
-                glfwSetWindowShouldClose(window, GLFW_TRUE);
+        if (!running) {
+            nova::Log("Destroying window!");
+            window.Destroy();
+            continue;
         }
 
-        if (!running)
-            break;
+        if (!show) {
+            nova::Log("Hiding window!");
+            window.Show(false);
+            continue;
+        }
 
-        glfwHideWindow(window);
-        while (GetMessage(&msg, hwnd, 0, 0) && msg.message != WM_HOTKEY);
+        // TODO: This should both be in the windowing API
+        if (!IsWindowVisible((HWND)window.NativeHandle()) || window.Minimized()) {
+            app.WaitForEvents();
+            continue;
+        }
 
+        draw->Reset();
+        Draw();
+
+        // Wait for frame
+
+        queue.WaitIdle();
+
+        // Record commands
+
+        auto cmd = queue.Begin();
+
+        // Update window size, record primary buffer and present
+
+        // Window borders need to lie on pixel boundaries
+        draw->bounds.Expand({
+            .min = glm::floor(draw->bounds.min),
+            .max = glm::ceil(draw->bounds.max),
+        });
+
+        window.SetSize({u32(draw->Bounds().Width()), u32(draw->Bounds().Height())}, nova::WindowPart::Client);
+        window.SetPosition({i32(draw->Bounds().min.x), i32(draw->Bounds().min.y)}, nova::WindowPart::Client);
+
+        queue.Acquire({swapchain}, {});
+
+        cmd.ClearColor(swapchain.Target(), Vec4(0.f, 1/255.f, 0.f, 0.f));
+        draw->Record(cmd, swapchain.Target());
+
+        cmd.Present(swapchain);
+
+        queue.Submit({cmd}, {});
+        queue.Present({swapchain}, {});
     }
+
+    nova::Log("Complete, exiting");
 }
 
 void App::OnChar(u32 codepoint)
@@ -489,72 +490,75 @@ void App::OnChar(u32 codepoint)
         if (c < ' ' || c > '~')
             return;
         keyword += c;
-        resultList->FilterStrings(keywords);
+        result_list->FilterStrings(keywords);
     }
     UpdateQuery();
 }
 
 void App::UpdateIndex()
 {
-    if (std::filesystem::exists(indexFile)) {
-        load_index(index, indexFile.c_str());
+    if (std::filesystem::exists(index_file)) {
+        load_index(index, index_file.c_str());
     } else {
         index_filesystem(index);
         sort_index(index);
-        save_index(index, indexFile.c_str());
+        save_index(index, index_file.c_str());
     }
     searcher.set_index(index);
-    fileResultList->FilterStrings(keywords);
+    file_result_list->FilterStrings(keywords);
 }
 
-void App::OnKey(u32 key, i32 action, i32 mods)
+void App::OnKey(nova::VirtualKey key, bool pressed)
 {
-    if (action == GLFW_RELEASE)
+    auto shift = app.IsVirtualKeyDown(nova::VirtualKey::LeftShift) || app.IsVirtualKeyDown(nova::VirtualKey::RightShift);
+    auto ctrl = app.IsVirtualKeyDown(nova::VirtualKey::LeftControl) || app.IsVirtualKeyDown(nova::VirtualKey::RightControl);
+
+    if (!pressed)
         return;
 
     switch (key)
     {
-    break;case GLFW_KEY_ESCAPE:
-        if (mods & GLFW_MOD_SHIFT)
+    break;case nova::VirtualKey::Escape:
+        if (shift)
             running = false;
         show = false;
-    break;case GLFW_KEY_DOWN:
+    break;case nova::VirtualKey::Down:
         Move(1);
-    break;case GLFW_KEY_UP:
+    break;case nova::VirtualKey::Up:
         Move(-1);
-    break;case GLFW_KEY_LEFT:
+    break;case nova::VirtualKey::Left:
         ResetItems();
-    break;case GLFW_KEY_RIGHT:
+    break;case nova::VirtualKey::Right:
         ResetItems(true);
-    break;case GLFW_KEY_ENTER: {
+    break;case nova::VirtualKey::Enter: {
         if (!items.empty())
         {
             auto view = items[selection].get();
             auto str = view->GetPath().string();
-            NOVA_LOG("Running {}!", str);
+            nova::Log("Running {}!", str);
 
             NOVA_STACK_POINT();
 
-            favResultList->IncrementUses(view->GetPath());
+            fav_result_list->IncrementUses(view->GetPath());
             ResetQuery();
             show = false;
 
             if ((GetKeyState(VK_LSHIFT) & 0x8000)
-            && (GetKeyState(VK_LCONTROL) & 0x8000)) {
+                    && (GetKeyState(VK_LCONTROL) & 0x8000)) {
                 ShellExecuteA(
                     nullptr,
                     "open",
                     (exe_dir / "nms-launch.exe").string().c_str(),
-                    NOVA_STACK_FORMAT("runas \"{}\"", str.c_str()).data(),
+                    nova::Fmt("runas \"{}\"", str).c_str(),
                     nullptr,
                     SW_SHOW);
             } else if (GetKeyState(VK_LCONTROL) & 0x8000) {
                 // open selected in explorer
                 std::system(
-                    NOVA_STACK_FORMAT("explorer /select, \"{}\"", str.c_str()).data());
+                    nova::Fmt("explorer /select, \"{}\"", str.c_str()).c_str());
             } else {
                 // open
-                auto params = NOVA_STACK_FORMAT("open \"{}\"", str.c_str());
+                auto params = nova::Fmt("open \"{}\"", str);
                 ShellExecuteA(
                     nullptr,
                     "open",
@@ -565,15 +569,15 @@ void App::OnKey(u32 key, i32 action, i32 mods)
             }
         }
     }
-    break;case GLFW_KEY_DELETE:
-        if ((mods & GLFW_MOD_SHIFT) && !items.empty())
+    break;case nova::VirtualKey::Delete:
+        if (shift && !items.empty())
         {
-            auto view = items[selection].get();
-            favResultList->ResetUses(view->GetPath());
+            auto* view = items[selection].get();
+            fav_result_list->ResetUses(view->GetPath());
             ResetQuery();
         }
-    break;case GLFW_KEY_BACKSPACE:
-        if (mods & GLFW_MOD_SHIFT) {
+    break;case nova::VirtualKey::Backspace:
+        if (shift) {
             ResetQuery();
         }
         else
@@ -584,7 +588,7 @@ void App::OnKey(u32 key, i32 action, i32 mods)
             {
                 keyword.pop_back();
                 // filter(matchBit, keyword, false);
-                resultList->FilterStrings(keywords);
+                result_list->FilterStrings(keywords);
                 UpdateQuery();
             }
             else if (keywords.size() > 1)
@@ -592,19 +596,19 @@ void App::OnKey(u32 key, i32 action, i32 mods)
                 keywords.pop_back();
                 // tree.setMatchBits(matchBit, 0, matchBit, 0);
                 // tree.matchBits &= ~matchBit;
-                resultList->FilterStrings(keywords);
+                result_list->FilterStrings(keywords);
                 UpdateQuery();
             }
         }
-    break;case GLFW_KEY_C:
-        if ((mods & GLFW_MOD_CONTROL) && !items.empty())
+    break;case nova::VirtualKey::C:
+        if (ctrl && !items.empty())
         {
             auto view = items[selection].get();
             auto str = view->GetPath().string();
-            NOVA_LOG("Copying {}!", str);
+            nova::Log("Copying {}!", str);
 
-            favResultList->IncrementUses(view->GetPath());
-            OpenClipboard(glfwGetWin32Window(window));
+            fav_result_list->IncrementUses(view->GetPath());
+            OpenClipboard(HWND(window.NativeHandle()));
             EmptyClipboard();
             auto contentHandle = GlobalAlloc(GMEM_MOVEABLE, str.size() + 1);
             auto contents = GlobalLock(contentHandle);
@@ -615,18 +619,20 @@ void App::OnKey(u32 key, i32 action, i32 mods)
             SetClipboardData(CF_TEXT, contentHandle);
             CloseClipboard();
         }
-    break;case GLFW_KEY_F5:
-        if (mods & GLFW_MOD_CONTROL)
+    break;case nova::VirtualKey::F5:
+        nova::Log("F5 pressed!");
+        if (ctrl)
         {
+            nova::Log("  re-indexing");
             ::ShellExecuteA(nullptr, "open", (exe_dir / "nms-index.exe").string().c_str(), nullptr, nullptr, SW_SHOW);
         }
         else
         {
-            resultList = std::make_unique<ResultListPriorityCollector>();
-            favResultList = std::make_unique<FavResultList>();
-            fileResultList = std::make_unique<FileResultList>(&searcher, favResultList.get());
-            resultList->AddList(favResultList.get());
-            resultList->AddList(fileResultList.get());
+            result_list = std::make_unique<ResultListPriorityCollector>();
+            fav_result_list = std::make_unique<FavResultList>();
+            file_result_list = std::make_unique<FileResultList>(&searcher, fav_result_list.get());
+            result_list->AddList(fav_result_list.get());
+            result_list->AddList(file_result_list.get());
 
             UpdateIndex();
             ResetItems();
@@ -639,33 +645,45 @@ void App::OnKey(u32 key, i32 action, i32 mods)
 //                               Entry point
 // -----------------------------------------------------------------------------
 
+static bool has_console;
+void LogError(std::string_view message)
+{
+    if (has_console) {
+        nova::Log(message);
+    } else {
+        MessageBoxW(nullptr, nova::ToUtf16(message).c_str(), L"NoMoreShortcuts - Error", MB_OK);
+    }
+}
+
 void Main()
 {
     try
     {
-        CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
-
         App app;
         app.Run();
     }
-    catch (const std::exception& e)
+    catch(const std::exception& exception)
     {
-        NOVA_LOG("Error: {}", e.what());
+        LogError(nova::Fmt("Error\n{}", exception.what()));
     }
-    catch (...)
+    catch(...)
     {
-        NOVA_LOG("Something went wrong!");
+        LogError("Unknown error");
     }
+
+    nova::Log("at end of main!");
 }
 
 i32 WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, i32)
 {
+    has_console = false;
     Main();
     return 0;
 }
 
 i32 main()
 {
+    has_console = true;
     Main();
     return 0;
 }

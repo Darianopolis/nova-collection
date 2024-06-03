@@ -2,6 +2,9 @@
 
 #include "nms_Query.hpp"
 
+#include <nova/window/nova_Window.hpp>
+#include <nova/ui/nova_Draw2D.hpp>
+
 #include "nms_Platform.hpp"
 
 using namespace nova::types;
@@ -9,41 +12,40 @@ using namespace nova::types;
 class App
 {
 public:
+    nova::Application app;
+    nova::Window   window;
+
     nova::Context context;
     nova::Queue queue;
-    std::unique_ptr<nova::draw::Draw2D> imDraw;
+    std::unique_ptr<nova::draw::Draw2D> draw;
 
     nova::Swapchain swapchain = {};
-    nova::CommandPool commandPool = {};
-    nova::Fence fence = {};
 
     std::unique_ptr<nova::draw::Font> font = {};
-    std::unique_ptr<nova::draw::Font> fontSmall = {};
-
-    GLFWwindow* window = {};
-    i32 mWidth, mHeight;
+    std::unique_ptr<nova::draw::Font> font_small = {};
+    i32 window_width, window_height;
 
     std::vector<std::string> keywords;
 
-    std::vector<std::unique_ptr<ResultItem>> items;
-    u32 selection;
-
     std::filesystem::path exe_dir;
 
-    std::string indexFile = std::format("{}\\.nms\\index.bin", getenv("USERPROFILE"));
+    std::string index_file = std::format("{}\\.nms\\index.bin", getenv("USERPROFILE"));
     index_t index;
     file_searcher_t searcher;
 
-    std::unique_ptr<FileResultList> fileResultList;
-    std::unique_ptr<FavResultList> favResultList;
-    std::unique_ptr<ResultListPriorityCollector> resultList;
+    std::unique_ptr<FileResultList> file_result_list;
+    std::unique_ptr<FavResultList> fav_result_list;
+    std::unique_ptr<ResultListPriorityCollector> result_list;
+
+    std::vector<std::unique_ptr<ResultItem>> items;
+    u32 selection;
 
     struct IconResult
     {
         nova::Image texture = {};
     };
 
-    ankerl::unordered_dense::map<std::filesystem::path, IconResult> iconCache;
+    ankerl::unordered_dense::map<std::filesystem::path, IconResult> icon_cache;
 
     bool show;
     bool running = true;
@@ -61,7 +63,7 @@ public:
     void Draw();
 
     void ResetQuery();
-    std::string JoinQuery();
+    std::string JoinQuery() const;
     void UpdateQuery();
 
     void Move(i32 delta);
@@ -69,7 +71,7 @@ public:
     bool MoveSelectedDown();
 
     void OnChar(u32 codepoint);
-    void OnKey(u32 key, i32 action, i32 mods);
+    void OnKey(nova::VirtualKey key, bool pressed);
 
     void UpdateIndex();
 

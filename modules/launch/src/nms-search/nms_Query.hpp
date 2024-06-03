@@ -1,7 +1,6 @@
 #pragma once
 
 #include <nova/core/nova_Core.hpp>
-#include <nova/core/nova_Stack.hpp>
 
 #include <nova/db/nova_Sqlite.hpp>
 
@@ -180,7 +179,7 @@ public:
     {
         Create();
         Load();
-        NOVA_LOG("Database = {}", dbName);
+        nova::Log("Database = {}", dbName);
     }
 
     void Create()
@@ -361,7 +360,6 @@ public:
 
     void Filter(nova::Span<std::string_view> query)
     {
-        NOVA_LOGEXPR(searcher);
         searcher->filter(query);
     }
 

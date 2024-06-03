@@ -1,7 +1,5 @@
-#include <nova/core/nova_Debug.hpp>
-#include <nova/core/nova_Guards.hpp>
-
-#include <nova/core/win32/nova_Win32Include.hpp>
+#include <nova/core/nova_Core.hpp>
+#include <nova/core/win32/nova_Win32.hpp>
 #include "shellapi.h"
 
 using namespace nova::types;
