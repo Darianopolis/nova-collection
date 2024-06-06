@@ -77,8 +77,8 @@ App::App()
 
 // -----------------------------------------------------------------------------
 
-    font = draw->LoadFont(nova::vfs::Load("SEGUISB.TTF"), 35.f * ui_scale);
-    font_small = draw->LoadFont(nova::vfs::Load("SEGOEUI.TTF"), 18.f * ui_scale);
+    font = draw->LoadFont(nova::vfs::Load("SEGUISB.TTF"));
+    font_small = draw->LoadFont(nova::vfs::Load("SEGOEUI.TTF"));
 
 // -----------------------------------------------------------------------------
 
@@ -109,8 +109,6 @@ App::~App()
     result_list.reset();
     fav_result_list.reset();
     file_result_list.reset();
-    font_small.reset();
-    font.reset();
     swapchain.Destroy();
     searcher.destroy();
     draw.reset();
@@ -259,7 +257,7 @@ bool App::MoveSelectedDown()
 
 void App::Draw()
 {
-    Vec4 background_color = { 0.1f, 0.1f, 0.1f, 1.f };
+    Vec4 background_color = { 0.1f, 0.1f, 0.1f, 0.95f };
     Vec4 border_color =  { 0.6f, 0.6f, 0.6f, 0.5f };
     Vec4 highlight_color = { 0.4f, 0.4f, 0.4f, 0.2f, };
 
@@ -303,13 +301,13 @@ void App::Draw()
 
     {
         auto query = JoinQuery();
-        auto bounds = draw->MeasureString(query, *font);
+        auto bounds = draw->MeasureString(query, *font, font_size * ui_scale);
 
         if (!bounds.Empty())
         {
             draw->DrawString(query,
                 pos - Vec2(bounds.Width() * 0.5f, input_text_vertical_offset),
-                *font);
+                *font, font_size * ui_scale);
         }
     }
 
@@ -380,7 +378,7 @@ void App::Draw()
             pos + Vec2(-half_output_width, margin + border_width)
                 + Vec2(0.f, output_item_height * f32(i))
                 + text_inset,
-            *font);
+            *font, font_size * ui_scale);
 
         // Path
 
@@ -391,7 +389,7 @@ void App::Draw()
             pos + Vec2(-half_output_width, margin + border_width)
                 + Vec2(0.f, output_item_height * f32(i))
                 + text_small_inset,
-            *font_small);
+            *font_small, font_small_size * ui_scale);
     }
 }
 
@@ -406,11 +404,21 @@ void App::Run()
             break;case nova::EventType::Input:
                 {
                     auto vk = app.ToVirtualKey(e.input.channel);
-                    OnKey(vk, e.input.pressed);
+                    if (vk == nova::VirtualKey::MouseMiddle && app.IsVirtualKeyDown(nova::VirtualKey::LeftControl)) {
+                        ui_scale = 1.f;
+                        nova::Log("UI scale reset", ui_scale);
+                    } else {
+                        OnKey(vk, e.input.pressed);
+                    }
                 }
             break;case nova::EventType::Hotkey:
                 nova::Log("Received hotkey event!");
                 window.Show(true);
+            break;case nova::EventType::MouseScroll:
+                if (app.IsVirtualKeyDown(nova::VirtualKey::LeftControl)) {
+                    ui_scale *= std::pow(1.025f, e.scroll.scrolled.y);
+                    nova::Log("UI scale = {}", ui_scale);
+                }
         }
     });
 
@@ -498,11 +506,11 @@ void App::OnChar(u32 codepoint)
 void App::UpdateIndex()
 {
     if (std::filesystem::exists(index_file)) {
-        load_index(index, index_file.c_str());
+        load_index(index, index_file.string().c_str());
     } else {
         index_filesystem(index);
         sort_index(index);
-        save_index(index, index_file.c_str());
+        save_index(index, index_file.string().c_str());
     }
     searcher.set_index(index);
     file_result_list->FilterStrings(keywords);
