@@ -6,8 +6,3 @@ build
 out
 cmake-build-*/
 CMakeLists.txt
-imgui.ini
-index.txt
-index.dat
-index.bin
-bin

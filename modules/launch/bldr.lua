@@ -1,14 +1,14 @@
 if Project "nms-search" then
     Compile { "src/nms-search/**" }
     Include "src"
-    Import { "nova", "index" }
-    Embed { "SEGOEUI.TTF", "SEGUISB.TTF" }
+    Import { "nova", "fs-indexer" }
+    Embed { "assets/SEGOEUI.TTF", "assets/SEGUISB.TTF" }
     Artifact { "out/nms-search", type = "Window" }
 end
 
 if Project "nms-index" then
     Compile "src/nms-index/**"
-    Import { "nova", "index" }
+    Import { "nova", "fs-indexer" }
     Artifact { "out/nms-index", type = "Console" }
 end
 
