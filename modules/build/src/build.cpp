@@ -122,8 +122,11 @@ const std::string& get_build_environment()
     return env;
 }
 
-uint32_t execute_program(const program_exec_t& info, [[maybe_unused]] flags_t flags)
+uint32_t execute_program(const program_exec_t& info, [[maybe_unused]] flags_t flags, std::string_view name)
 {
+    (void)name;
+    // auto start = std::chrono::steady_clock::now();
+
     std::stringstream ss;
     auto cmd = [&](std::string_view value)
     {
@@ -224,6 +227,9 @@ uint32_t execute_program(const program_exec_t& info, [[maybe_unused]] flags_t fl
     CloseHandle(stdout_read);
     CloseHandle(pi.hProcess);
 
+    // auto end = std::chrono::steady_clock::now();
+    // log_debug("{} - {}", name, duration_to_string(end - start));
+
     return ec;
 }
 
@@ -267,14 +273,17 @@ void generate_build(project_artifactory_t& artifactory,  project_t& project, pro
     for (auto&[path, type] : project.sources) {
         auto insert_source = [&](const fs::path& file)
         {
+            if (!fs::is_regular_file(file)) return;
+
             auto src_type = type;
             if (type == source_type_t::automatic) {
-                if      (file.extension() == ".cppm") src_type = source_type_t::cppm;
-                else if (file.extension() == ".ixx" ) src_type = source_type_t::cppm;
-                else if (file.extension() == ".cpp" ) src_type = source_type_t::cpp;
-                else if (file.extension() == ".cxx" ) src_type = source_type_t::cpp;
-                else if (file.extension() == ".cc"  ) src_type = source_type_t::cpp;
-                else if (file.extension() == ".c"   ) src_type = source_type_t::c;
+                if      (file.extension() == ".cppm" ) src_type = source_type_t::cppm;
+                else if (file.extension() == ".ixx"  ) src_type = source_type_t::cppm;
+                else if (file.extension() == ".cpp"  ) src_type = source_type_t::cpp;
+                else if (file.extension() == ".cxx"  ) src_type = source_type_t::cpp;
+                else if (file.extension() == ".cc"   ) src_type = source_type_t::cpp;
+                else if (file.extension() == ".c"    ) src_type = source_type_t::c;
+                else if (file.extension() == ".slang") src_type = source_type_t::slang;
             }
 
             if (src_type != source_type_t::automatic) {
@@ -559,20 +568,20 @@ bool build_project(std::span<project_t*> projects, flags_t flags)
     struct compile_task_t
     {
         project_t* project;
-        uint32_t source_idx;
+        source_t    source;
     };
 
     std::vector<compile_task_t> compile_tasks;
 
     for (auto* project : projects) {
         for (uint32_t i = 0; i < project->sources.size(); ++i) {
-            compile_tasks.emplace_back(project, i);
+            compile_tasks.emplace_back(project, project->sources[i]);
         }
     }
 
     // Find list of changed files
 
-    std::vector<uint32_t>             filtered_compile_tasks;
+    std::vector<compile_task_t>       filtered_compile_tasks;
     std::unordered_set<std::filesystem::path> generated_objs;
     std::unordered_set<std::filesystem::path>       obj_dirs;
 
@@ -587,57 +596,199 @@ bool build_project(std::span<project_t*> projects, flags_t flags)
     for (int32_t i = 0; i < int32_t(compile_tasks.size()); ++i) {
         auto task = compile_tasks[i];
         auto& project = *task.project;
-        auto& source = project.sources[task.source_idx];
+        auto& source = task.source;
 
         auto target_obj = source.file;
-        target_obj.replace_extension(".obj");
+        if (source.type == source_type_t::embed) {
+            target_obj = std::format("{}.obj", target_obj.string());
+        } else if (source.type == source_type_t::slang) {
+            target_obj.replace_extension(".spv.obj");
+        } else {
+            target_obj.replace_extension(".obj");
+        }
         target_obj = artifacts_dir / project.name / target_obj.filename();
 
         generated_objs.emplace(target_obj);
 
         if (fs::exists(target_obj)) {
             auto last_modified = fs::last_write_time(target_obj);
-            if (!is_dirty(project, source.file, last_modified)) {
-                continue;
+            if (source.type == source_type_t::embed) {
+                // Don't look for dependencies in embeds
+                if (fs::last_write_time(source.file) <= last_modified) {
+                    continue;
+                }
+            } else {
+                if (!is_dirty(project, source.file, last_modified)) {
+                    continue;
+                }
             }
             fs::remove(target_obj);
         }
 
-        filtered_compile_tasks.emplace_back(i);
+        filtered_compile_tasks.emplace_back(compile_tasks[i]);
     }
 
     log_info("Scanned {} / {} ({} bytes)", files_scanned, files_visited, bytes_scanned);
-
-    timer.segment("compiling");
 
     log_info("Compiling {} file{} ({} skipped)",
         filtered_compile_tasks.size(),
         (filtered_compile_tasks.size() == 1) ? "" : "s",
         compile_tasks.size() - filtered_compile_tasks.size());
 
+    timer.segment("compiling");
+
     std::atomic_uint32_t errors = 0;
     std::atomic_uint32_t aborted = 0;
 
-    if (filtered_compile_tasks.size()) {
+    auto arg = [&](auto& exec_info, auto&&... args)
+    {
+        std::stringstream ss;
+        (ss << ... << args);
+        exec_info.arguments.push_back(ss.str());
+    };
+
+    auto args = [&](auto& exec_info, auto&&... _args)
+    {
+        (arg(exec_info, _args), ...);
+    };
+
+    while (filtered_compile_tasks.size()) {
+        std::vector<compile_task_t> new_compile_tasks;
+
 #pragma omp parallel for
         for (int32_t i = 0; i < int32_t(filtered_compile_tasks.size()); ++i) {
-            auto task = compile_tasks[filtered_compile_tasks[i]];
+            auto task = filtered_compile_tasks[i];
             auto& project = *task.project;
-            auto& source = project.sources[task.source_idx];
+            auto source = task.source;
 
             program_exec_t info;
             info.working_directory = {(artifacts_dir / project.name).string()};
 
-            auto arg = [&](auto& exec_info, auto&&... args)
-            {
-                std::stringstream ss;
-                (ss << ... << args);
-                exec_info.arguments.push_back(ss.str());
-            };
+            bool generated = false;
 
-            arg(info, "cmd");
-            arg(info, "/c");
-            arg(info, "cl");
+            if (source.type == source_type_t::embed) {
+                log("embedding {}...", source.file.filename().string());
+
+                auto gen_path = artifacts_dir / project.name / std::format("{}.cpp", source.file.filename().string());
+                std::ofstream gen(gen_path, std::ios::binary);
+                gen << "#include <cstdint>\n";
+                gen << "void bldr_register_embed(const char* name, const void* data, size_t size_in_bytes);\n";
+                gen << "namespace {\n";
+                gen << "int bldr_register_embed_call(const char* name, const void* data, size_t size_in_bytes)\n";
+                gen << "{\n";
+                gen << "    bldr_register_embed(name, data, size_in_bytes);\n";
+                gen << "    return 1;\n";
+                gen << "}\n";
+                gen << "constexpr uint64_t bldr_embed_data[] {";
+
+                auto resource_in_path = source.file;
+                std::ifstream resource_in(resource_in_path, std::ios::binary);
+                size_t resource_byte_size = fs::file_size(resource_in_path);
+                size_t u64_count = (resource_byte_size + 7) / 8;
+
+                for (size_t j = 0; j < u64_count; ++j) {
+                    if ((j % 8) == 0) gen << '\n';
+                    uint64_t value = {};
+                    resource_in.read(reinterpret_cast<char*>(&value), sizeof(value));
+                    gen << std::format("{:#016x},", value);
+                }
+
+                gen << "\n";
+                gen << "};\n";
+                gen << "const int bldr_embed_registered = bldr_register_embed_call(\"" << resource_in_path.filename().string() << "\", bldr_embed_data, " << resource_byte_size << ");\n";
+                gen << "}\n";
+
+                // Continue to compile generated source file
+
+                resource_in.close();
+                gen.close();
+
+                source.type = source_type_t::cpp;
+                source.file = gen_path;
+                info.arguments.clear();
+                generated = true;
+
+            } else if (source.type == source_type_t::slang) {
+                args(info, "cmd", "/c", "slangc");
+
+                args(info, "-o", fs::path(source.file.filename()).replace_extension(".spv").string());
+
+                args(info, "-lang", "slang");
+
+                arg(info, "-matrix-layout-column-major");
+                arg(info, "-force-glsl-scalar-layout");
+
+                args(info, "-target", "spirv");
+                arg(info, "-fvk-use-entrypoint-name");
+                arg(info, "-emit-spirv-directly");
+
+                for (auto& include : project.includes) arg(info, "-I",  include.string());
+
+                log("{}", source.file.filename().string());
+                arg(info, source.file.string());
+
+                auto res = execute_program(info, flags, source.file.filename().string());
+                if (res != 0) {
+                    errors++;
+                    continue;
+                }
+
+                // Generate source file for embedding
+
+                auto gen_path = artifacts_dir / project.name / fs::path(source.file.filename()).replace_extension(".spv.cpp");
+                std::ofstream gen(gen_path, std::ios::binary);
+                gen << "#include <cstdint>\n";
+                gen << "void bldr_register_embed(const char* name, const void* data, size_t size_in_bytes);\n";
+                gen << "namespace {\n";
+                gen << "int bldr_register_embed_call(const char* name, const void* data, size_t size_in_bytes)\n";
+                gen << "{\n";
+                gen << "    bldr_register_embed(name, data, size_in_bytes);\n";
+                gen << "    return 1;\n";
+                gen << "}\n";
+                gen << "constexpr uint32_t bldr_spirv_data[] {";
+
+                auto spirv_in_path = artifacts_dir / project.name / fs::path(source.file.filename()).replace_extension(".spv");
+                std::ifstream spirv_in(spirv_in_path, std::ios::binary);
+                size_t spirv_byte_size = fs::file_size(spirv_in_path);
+                size_t spirv_count = spirv_byte_size / 4;
+
+                for (size_t j = 0; j < spirv_count; ++j) {
+                    if ((j % 16) == 0) gen << '\n';
+                    uint32_t value;
+                    spirv_in.read(reinterpret_cast<char*>(&value), sizeof(value));
+                    gen << std::format("{},", value);
+                }
+
+                gen << "\n";
+                gen << "};\n";
+                gen << "const int bldr_spirv_registered = bldr_register_embed_call(\"" << spirv_in_path.filename().string() << "\", bldr_spirv_data, " << spirv_byte_size << ");\n";
+                gen << "}\n";
+
+                // Continue to compile generated source file
+
+                spirv_in.close();
+                gen.close();
+
+                source.type = source_type_t::cpp;
+                source.file = gen_path;
+                info.arguments.clear();
+                generated = true;
+            }
+
+            if (generated) {
+#pragma omp critical
+                {
+                    new_compile_tasks.emplace_back(&project, source);
+                }
+                continue;
+            }
+
+
+            if (is_set(flags, flags_t::trace)) {
+                log_debug("compiling [{}] into [{}]", source.file.filename().string(), to_string(info.working_directory));
+            }
+
+            args(info, "cmd", "/c", "cl");
 
             // TODO: Parameterize
 
@@ -731,12 +882,14 @@ bool build_project(std::span<project_t*> projects, flags_t flags)
             for (auto& include : project.includes)       arg(info, "/I",  include.string());
             for (auto& include : project.force_includes) arg(info, "/FI", include.string());
             for (auto& define  : project.build_defines)  arg(info, "/D", to_string(define));
-
-            auto res = execute_program(info, flags);
+            auto res = execute_program(info, flags, source.file.filename().string());
             if (res != 0) {
+                log_error("Process failed with code: {}", res);
                 errors++;
             }
         }
+
+        filtered_compile_tasks = std::move(new_compile_tasks);
     }
 
     timer.segment("cleaning old objects");
@@ -772,17 +925,7 @@ bool build_project(std::span<project_t*> projects, flags_t flags)
             program_exec_t info;
             info.working_directory = {artifacts_dir.string()};
 
-            auto arg = [&](auto& exec_info, auto&&... args)
-            {
-                std::stringstream ss;
-                (ss << ... << args);
-                exec_info.arguments.push_back(ss.str());
-            };
-
-            arg(info, "cmd");
-            arg(info, "/c");
-            arg(info, "link");
-            arg(info, "/nologo");
+            args(info, "cmd", "/c", "link", "/nologo");
 
             arg(info, "/IGNORE:4099");     // PDB 'filename' was not found with 'object/library' or at 'path'; linking object as if no debug info
             if (is_set(flags, flags_t::lto)) {
@@ -906,7 +1049,7 @@ bool build_project(std::span<project_t*> projects, flags_t flags)
 
             // Link
 
-            auto res = execute_program(info, flags);
+            auto res = execute_program(info, flags, path.filename().string());
             if (res != 0) {
                 errors++;
                 continue;

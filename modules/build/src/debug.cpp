@@ -10,6 +10,8 @@ std::ostream& operator<<(std::ostream& os, source_type_t type)
         case cppm:      return os << "cppm";
         case cpp:       return os << "cpp";
         case c:         return os << "c";
+        case slang:     return os << "slang";
+        case embed:     return os << "embed";
         default:        return os << "invalid";
     }
 }

@@ -58,6 +58,8 @@ enum class source_type_t
     cppm,
     cpp,
     c,
+    slang,
+    embed,
     _max_enum,
 };
 std::ostream& operator<<(std::ostream& os, source_type_t type);

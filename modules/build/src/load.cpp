@@ -47,6 +47,8 @@ values_t get_values(const sol::object& obj)
 
 void populate_artifactory_from_file(project_artifactory_t& artifactory, const fs::path& file, flags_t flags)
 {
+    (void)flags;
+
     sol::state lua;
 
     lua.open_libraries(
@@ -64,9 +66,9 @@ void populate_artifactory_from_file(project_artifactory_t& artifactory, const fs
     lua.set_function("Error", []{});
 
     lua.set_function("Project", [&](std::string_view name) {
-        if (project && is_set(flags, flags_t::trace)) {
-            debug_project(*project);
-        }
+        // if (project && is_set(flags, flags_t::trace)) {
+        //     debug_project(*project);
+        // }
 
         project = new project_t{};
         project->name = std::string(name);
@@ -86,13 +88,22 @@ void populate_artifactory_from_file(project_artifactory_t& artifactory, const fs
         source_type_t type = source_type_t::automatic;
         if (values.options.contains("type")) {
             auto type_str = values.options.at("type");
-            if      (type_str == "cppm") type = source_type_t::cppm;
-            else if (type_str == "cpp")  type = source_type_t::cpp;
-            else if (type_str == "c")    type = source_type_t::c;
+            if      (type_str == "cppm")  type = source_type_t::cppm;
+            else if (type_str == "cpp")   type = source_type_t::cpp;
+            else if (type_str == "c")     type = source_type_t::c;
+            else if (type_str == "slang") type = source_type_t::slang;
         }
 
         for (auto& value : values.values) {
             project->sources.push_back({ project->dir / value, type });
+        }
+    });
+
+    lua.set_function("Embed", [&](const sol::object& obj) {
+        auto values = get_values(obj);
+
+        for (auto& value : values.values) {
+            project->sources.push_back({ project->dir / value, source_type_t::embed });
         }
     });
 
@@ -206,9 +217,9 @@ void populate_artifactory_from_file(project_artifactory_t& artifactory, const fs
         log_error("Unknown error thrown running bldr file");
     }
 
-    if (project && is_set(flags, flags_t::trace)) {
-        debug_project(*project);
-    }
+    // if (project && is_set(flags, flags_t::trace)) {
+    //     debug_project(*project);
+    // }
 }
 
 void populate_artifactory(project_artifactory_t& artifactory, flags_t flags)

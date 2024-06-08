@@ -145,10 +145,10 @@ int main(int argc, char* argv[]) try
             }
             auto* build = new project_t();
             generate_build(artifactory, *artifactory.projects.at(name), *build);
-            if (is_set(flags, flags_t::trace)) {
-                log_debug(" ---- Combined project ----");
-                debug_project(*build);
-            }
+            // if (is_set(flags, flags_t::trace)) {
+            //     log_debug(" ---- Combined project ----");
+            //     debug_project(*build);
+            // }
             to_build.push_back(build);
         }
 
