@@ -1013,62 +1013,63 @@ bool build_project(std::span<project_t*> projects, flags_t flags)
 
             // Check if any link inputs changed
 
-            if (!any_changed) {
-                continue;
-            }
+            if (any_changed) {
+                log_info("Generating [{}]", path.filename().string());
 
-            log_info("Generating [{}]", path.filename().string());
+                // Add default windows libraries
 
-            // Add default windows libraries
+                arg(info, "user32.lib");
+                arg(info, "gdi32.lib");
+                arg(info, "shell32.lib");
+                arg(info, "Winmm.lib");
+                arg(info, "Advapi32.lib");
+                arg(info, "Comdlg32.lib");
+                arg(info, "comsuppw.lib");
+                arg(info, "onecore.lib");
 
-            arg(info, "user32.lib");
-            arg(info, "gdi32.lib");
-            arg(info, "shell32.lib");
-            arg(info, "Winmm.lib");
-            arg(info, "Advapi32.lib");
-            arg(info, "Comdlg32.lib");
-            arg(info, "comsuppw.lib");
-            arg(info, "onecore.lib");
+                arg(info, "D3D12.lib");
+                arg(info, "DXGI.lib");
+                arg(info, "dcomp.lib");
+                arg(info, "d3d11.lib");
 
-            arg(info, "D3D12.lib");
-            arg(info, "DXGI.lib");
-            arg(info, "dcomp.lib");
-            arg(info, "d3d11.lib");
+                // Write link commands to file
 
-            // Write link commands to file
+                {
+                    std::ofstream link_out(s_paths.dir / ".link-commands");
+                    for (uint32_t j = 4; j < info.arguments.size(); ++j) {
+                        link_out << '"' << info.arguments[j] << "\"\n";
+                    }
+                    info.arguments.resize(4);
+                    arg(info, "@", to_string(s_paths.dir / ".link-commands"));
 
-            {
-                std::ofstream link_out(s_paths.dir / ".link-commands");
-                for (uint32_t j = 4; j < info.arguments.size(); ++j) {
-                    link_out << '"' << info.arguments[j] << "\"\n";
                 }
-                info.arguments.resize(4);
-                arg(info, "@", to_string(s_paths.dir / ".link-commands"));
 
-            }
+                // Link
 
-            // Link
-
-            auto res = execute_program(info, flags, path.filename().string());
-            if (res != 0) {
-                errors++;
-                continue;
+                auto res = execute_program(info, flags, path.filename().string());
+                if (res != 0) {
+                    errors++;
+                    continue;
+                }
             }
 
             // Copy output
 
-            // TODO: Lazily copy anything regardless of whether linking occured
-
             try {
                 fs::create_directories(path.parent_path());
-                fs::remove(path);
-                fs::copy(build_path, path);
+
+                if (any_changed || !fs::exists(path) || fs::last_write_time(build_path) > fs::last_write_time(path)) {
+                    fs::remove(path);
+                    fs::copy(build_path, path);
+                }
 
                 for (auto& shared_lib_glob : project.shared_libs) {
                     for (auto& shared_lib : resolve_glob(shared_lib_glob)) {
                         auto slib_target = path.parent_path() / shared_lib.filename();
-                        fs::remove(slib_target);
-                        fs::copy(shared_lib, slib_target);
+                        if (!fs::exists(slib_target) || fs::last_write_time(shared_lib) > fs::last_write_time(slib_target)) {
+                            fs::remove(slib_target);
+                            fs::copy(shared_lib, slib_target);
+                        }
                     }
                 }
             } catch (const std::exception& e) {
