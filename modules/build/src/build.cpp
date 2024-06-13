@@ -804,6 +804,7 @@ bool build_project(std::span<project_t*> projects, flags_t flags)
             arg(info, "/permissive-");     // Disable permissive mode
             // arg(info, "/fp:fast");      // Allow floating point reordering
             arg(info, "/utf-8");           // Set source and execution character sets
+            arg(info, "/Zc:char8_t-");     // Treat u8"" strings as char instead of char8_t
 
             if (!is_set(flags, flags_t::noopt)) {
                 arg(info, "/O2");          // Maximum optimization level
