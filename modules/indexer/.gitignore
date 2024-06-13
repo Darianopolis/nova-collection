@@ -1,0 +1,13 @@
+# env
+.vscode/
+build/
+.bldr/
+.idea/
+cmake-build-*/
+CMakeLists.txt
+
+# build
+out/
+
+# output
+index.bin
